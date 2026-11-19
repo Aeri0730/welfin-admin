@@ -78,3 +78,11 @@ export const cardHead = style({
   marginBottom: 12,
 });
 
+
+export const inputSub = style({
+  display: 'block',
+  marginTop: 2,
+  fontSize: 12,
+  fontWeight: 500,
+  color: vars.color.grey500,
+});

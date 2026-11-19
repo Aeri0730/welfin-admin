@@ -24,6 +24,14 @@ import * as s from './SalesPage.css';
 /** 창고 계열 색 (막대·범례 점에만 사용) — 검증: CVD ΔE 32.5 */
 const WAREHOUSE_COLORS = ['#3182F6', '#FE9800', '#03B26C'];
 
+/**
+ * 쿠팡 RG 는 실적이 하루 늦게 나와서, 엑셀처럼 기준일의 '전날' 매출을 보여주고 입력받는다.
+ * DB 에는 실제 판매일(sales_on)로 저장된다.
+ */
+const SALES_LAG_DAYS: Record<string, number> = { COUPANG: 1 };
+const salesDayOf = (day: string, warehouse: Warehouse) => addDays(day, -(SALES_LAG_DAYS[warehouse.code] ?? 0));
+const shortDate = (day: string) => `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))}`;
+
 const onlyDigits = (value: string) => value.replace(/\D/g, '').slice(0, 13);
 const formatInput = (value: string) => (value ? formatNumber(Number(value)) : '');
 
@@ -48,16 +56,22 @@ export function SalesPage() {
   const current = useStockMatrix(date);
   const previous = useStockMatrix(prevDate);
   const warehouses = current.warehouses;
-  const monthSales = useDailySales(monthStart < prevDate ? monthStart : prevDate, date);
+  const salesFrom = addDays(date, -3);
+  const monthSales = useDailySales(monthStart < salesFrom ? monthStart : salesFrom, date);
   const targets = useSalesTargets();
   const movements = useMovements({ from: prevDate, to: date });
 
   const [targetOpen, setTargetOpen] = useState(false);
 
+  /** 기준일 day 의 창고별 매출 (쿠팡 RG 는 전날 판매분). warehouseId 가 없으면 전 창고 합계 */
   const salesOf = (day: string, warehouseId?: number) =>
-    (monthSales.data ?? [])
-      .filter((row) => row.salesOn === day && (warehouseId === undefined || row.warehouseId === warehouseId))
+    warehouses
+      .filter((w) => warehouseId === undefined || w.id === warehouseId)
+      .flatMap((w) => (monthSales.data ?? []).filter((row) => row.warehouseId === w.id && row.salesOn === salesDayOf(day, w)))
       .reduce((acc, row) => ({ amount: acc.amount + row.amount, quantity: acc.quantity + row.quantity }), { amount: 0, quantity: 0 });
+
+  const salesLabel = (w: Warehouse, day: string) =>
+    SALES_LAG_DAYS[w.code] ? `${w.name} (${shortDate(salesDayOf(day, w))} 판매)` : w.name;
 
   const movedOf = (day: string, type: 'inbound' | 'outbound', warehouseId?: number) =>
     (movements.data ?? [])
@@ -171,7 +185,7 @@ export function SalesPage() {
                   <th className={p.th}>구분</th>
                   {warehouses.map((w) => (
                     <th key={w.id} className={cx(p.th, p.num)}>
-                      {w.name}
+                      {salesLabel(w, date)}
                     </th>
                   ))}
                   <th className={cx(p.th, p.num)}>금일 합계</th>
@@ -219,7 +233,7 @@ export function SalesPage() {
             { name: `전일 (${prevDate.slice(5)})`, color: '#B0B8C1' },
           ]}
           rows={warehouses.map((w) => ({
-            label: w.name,
+            label: SALES_LAG_DAYS[w.code] ? `${w.name} (하루 전 판매)` : w.name,
             values: [salesOf(date, w.id).amount, salesOf(prevDate, w.id).amount],
           }))}
         />
@@ -295,7 +309,7 @@ function SalesInput({ date, warehouses, rows }: SalesInputProps) {
       const next = { ...prev };
       for (const w of warehouses) {
         if (next[w.id]) continue;
-        const saved = rows.find((r) => r.salesOn === date && r.warehouseId === w.id);
+        const saved = rows.find((r) => r.salesOn === salesDayOf(date, w) && r.warehouseId === w.id);
         if (saved) next[w.id] = { amount: String(saved.amount), quantity: String(saved.quantity) };
       }
       return next;
@@ -308,12 +322,12 @@ function SalesInput({ date, warehouses, rows }: SalesInputProps) {
       [warehouseId]: { ...(prev[warehouseId] ?? { amount: '', quantity: '' }), [field]: onlyDigits(value) },
     }));
 
-  const hasSaved = rows.some((r) => r.salesOn === date);
+  const hasSaved = warehouses.some((w) => rows.some((r) => r.warehouseId === w.id && r.salesOn === salesDayOf(date, w)));
 
   const handleSave = () => {
     save.mutate(
       warehouses.map((w) => ({
-        salesOn: date,
+        salesOn: salesDayOf(date, w),
         warehouseId: w.id,
         amount: Number(draft[w.id]?.amount || 0),
         quantity: Number(draft[w.id]?.quantity || 0),
@@ -328,7 +342,10 @@ function SalesInput({ date, warehouses, rows }: SalesInputProps) {
       <div className={p.stack} style={{ gap: 12 }}>
         {warehouses.map((w) => (
           <div key={w.id} className={s.inputGrid}>
-            <span className={s.inputLabel}>{w.name}</span>
+            <span className={s.inputLabel}>
+              {w.name}
+              {SALES_LAG_DAYS[w.code] ? <span className={s.inputSub}>{shortDate(salesDayOf(date, w))} 판매분</span> : null}
+            </span>
             <TextField
               label="매출액(원)"
               inputMode="numeric"
