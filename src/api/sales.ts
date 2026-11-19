@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type { DailySales, SalesTarget, StorageFee, StorageKind } from './types';
 
 function toError(error: { message: string; code?: string }): Error {
-  if (error.code === '42P01') return new Error('매출 테이블이 없어요. supabase/migrations/0004_products_sales.sql 을 실행해주세요');
+  if (error.code === '42P01' || error.code === 'PGRST205') return new Error('매출 테이블이 없어요. supabase/migrations/0004_products_sales.sql 을 실행해주세요');
   if (error.code === '42501') return new Error('권한이 없어요. 관리자에게 문의해주세요');
   return new Error(error.message);
 }

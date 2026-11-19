@@ -277,3 +277,33 @@ export const quickIcon = style({
   background: vars.color.blue50,
   color: vars.color.blue500,
 });
+
+/* ---------- 재고 현황: 본문 + 오른쪽 보관비 패널 ---------- */
+// 모바일: 검색 → 보관비 → 목록 순서로 한 줄. 데스크톱: 보관비가 오른쪽에 떠서 따라온다.
+export const stockLayout = style({
+  display: 'grid',
+  gap: 16,
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gridTemplateAreas: '"filters" "aside" "main"',
+  '@media': {
+    [media.desktop]: {
+      gridTemplateColumns: 'minmax(0, 1fr) 320px',
+      gridTemplateRows: 'auto 1fr',
+      gridTemplateAreas: '"filters aside" "main aside"',
+      alignItems: 'start',
+    },
+  },
+});
+
+export const stockFilters = style({ gridArea: 'filters' });
+export const stockMain = style({ gridArea: 'main', display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 });
+export const stockAside = style({
+  gridArea: 'aside',
+  '@media': {
+    [media.desktop]: {
+      position: 'sticky',
+      top: 24,
+      boxShadow: '0 8px 24px rgba(0, 23, 51, 0.08)',
+    },
+  },
+});

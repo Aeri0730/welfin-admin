@@ -78,7 +78,3 @@ export const cardHead = style({
   marginBottom: 12,
 });
 
-export const cellInput = style({
-  minWidth: 96,
-  textAlign: 'right',
-});

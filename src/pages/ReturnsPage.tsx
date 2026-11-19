@@ -128,6 +128,36 @@ export function ReturnsPage() {
   }, [returns.data]);
 
   /* ---------- 상태 변경 ---------- */
+  /* ---------- 회수완료 탭: 선택해서 일괄 검수완료 ---------- */
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const bulkMode = filter === 'collected';
+  const selectable = bulkMode ? visible.filter((item) => item.status === 'collected') : [];
+  const selectedItems = selectable.filter((item) => selectedIds.has(item.id));
+  const allSelected = selectable.length > 0 && selectedItems.length === selectable.length;
+
+  const toggleSelect = (item: ReturnItem) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+
+  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(selectable.map((item) => item.id)));
+
+  const inspectSelected = () => {
+    if (selectedItems.length === 0) return;
+    updateReturns.mutate(
+      selectedItems.map((item) => ({ current: item, patch: { status: 'inspected' as const } })),
+      {
+        onSuccess: (count) => {
+          toast(`${count}건을 검수완료로 바꿨어요`);
+          setSelectedIds(new Set());
+        },
+      },
+    );
+  };
+
   const changeStatus = (item: ReturnItem, status: ReturnStatus) => {
     updateReturns.mutate([{ current: item, patch: { status } }], {
       onSuccess: () => toast(`${item.recipient} 님 건을 ${RETURN_STATUS_LABEL[status]}로 바꿨어요`),
@@ -192,7 +222,10 @@ export function ReturnsPage() {
                 role="tab"
                 aria-selected={active}
                 className={s.filterTab({ active })}
-                onClick={() => setFilter(f.key)}
+                onClick={() => {
+                  setFilter(f.key);
+                  setSelectedIds(new Set());
+                }}
               >
                 {f.label}
                 <span className={s.filterCount({ active, alert: !active && f.key === 'overdue' && tabCounts.overdue > 0 })}>
@@ -241,6 +274,18 @@ export function ReturnsPage() {
           </p>
         )}
 
+        {bulkMode && selectable.length > 0 && (
+          <div className={s.bulkBar}>
+            <label className={s.checkLabel}>
+              <input type="checkbox" className={s.checkbox} checked={allSelected} onChange={toggleAll} />
+              전체 선택 ({selectedItems.length}/{selectable.length})
+            </label>
+            <Button size="sm" onClick={inspectSelected} disabled={selectedItems.length === 0 || busy} loading={updateReturns.isPending}>
+              {selectedItems.length > 0 ? `${selectedItems.length}건 검수완료` : '검수완료'}
+            </Button>
+          </div>
+        )}
+
         {returns.isLoading ? (
           <div className={p.stack} style={{ marginTop: 12 }}>
             {[0, 1, 2].map((i) => (
@@ -261,6 +306,8 @@ export function ReturnsPage() {
                 onStatus={changeStatus}
                 onEdit={setEditing}
                 onRefresh={(target) => runTracking([target], { silent: false })}
+                selected={bulkMode ? selectedIds.has(item.id) : undefined}
+                onSelect={bulkMode && item.status === 'collected' ? toggleSelect : undefined}
               />
             ))}
           </ul>

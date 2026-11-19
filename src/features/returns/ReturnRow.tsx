@@ -14,9 +14,22 @@ interface ReturnRowProps {
   onStatus: (item: ReturnItem, status: ReturnStatus) => void;
   onEdit: (item: ReturnItem) => void;
   onRefresh: (item: ReturnItem) => void;
+  /** 넘기면 체크박스가 보인다 (일괄 처리용) */
+  selected?: boolean;
+  onSelect?: (item: ReturnItem) => void;
 }
 
-export function ReturnRow({ item, todayString, productName, busy, onStatus, onEdit, onRefresh }: ReturnRowProps) {
+export function ReturnRow({
+  item,
+  todayString,
+  productName,
+  busy,
+  onStatus,
+  onEdit,
+  onRefresh,
+  selected,
+  onSelect,
+}: ReturnRowProps) {
   const [open, setOpen] = useState(false);
   const days = daysSince(item.receivedOn, todayString);
   const overdue = isOverdue(item, todayString);
@@ -27,6 +40,15 @@ export function ReturnRow({ item, todayString, productName, busy, onStatus, onEd
     <li className={s.item}>
       <div className={s.itemMain}>
         <p className={s.itemTitle}>
+          {onSelect && (
+            <input
+              type="checkbox"
+              className={s.checkbox}
+              checked={Boolean(selected)}
+              onChange={() => onSelect(item)}
+              aria-label={`${item.recipient} 선택`}
+            />
+          )}
           {item.recipient}
           <Badge tone={STATUS_TONE[item.status]}>{RETURN_STATUS_LABEL[item.status]}</Badge>
           {item.kind && (

@@ -169,6 +169,26 @@ export const listToolbar = style({
   padding: '12px 0 4px',
 });
 
+export const checkbox = style({
+  width: 18,
+  height: 18,
+  margin: 0,
+  flexShrink: 0,
+  accentColor: vars.color.blue500,
+  cursor: 'pointer',
+});
+
+export const bulkBar = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginTop: 8,
+  padding: '10px 12px',
+  borderRadius: 12,
+  background: vars.color.grey50,
+});
+
 /* ---------- 목록 ---------- */
 export const item = style({
   display: 'grid',

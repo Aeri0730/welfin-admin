@@ -15,7 +15,7 @@ import { Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/u
 import { useProfile } from '@/features/auth/session';
 import { sumStock, useStockMatrix } from '@/features/inventory/useStockMatrix';
 import { BarChart, type ChartSeries } from '@/features/sales/BarChart';
-import { StorageFeeCard } from '@/features/sales/StorageFeeCard';
+import { FeaturedStock } from '@/features/sales/FeaturedStock';
 import { cx } from '@/lib/cx';
 import { addDays, formatDateLabel, formatNumber, today } from '@/lib/format';
 import * as p from './pages.css';
@@ -232,64 +232,7 @@ export function SalesPage() {
         ) : featured.length === 0 ? (
           <EmptyState title="표시할 제품이 없어요" description="기준 정보에서 제품의 '매출 탭 표시 순서'를 정해주세요" />
         ) : (
-          <div className={p.tableWrap}>
-            <table className={p.table}>
-              <thead>
-                <tr>
-                  <th className={p.th}>제품명</th>
-                  {warehouses.map((w) => (
-                    <th key={w.id} className={cx(p.th, p.num)}>
-                      {w.name}
-                    </th>
-                  ))}
-                  <th className={cx(p.th, p.num)}>총 재고수량</th>
-                  <th className={cx(p.th, p.num)}>입고단가</th>
-                  {warehouses.map((w) => (
-                    <th key={w.id} className={cx(p.th, p.num)}>
-                      {w.name} 재고액
-                    </th>
-                  ))}
-                  <th className={cx(p.th, p.num)}>총 재고액</th>
-                </tr>
-              </thead>
-              <tbody>
-                {featured.map((row) => (
-                  <tr key={row.product.id}>
-                    <td className={cx(p.td, p.wrapCell)}>{row.product.name}</td>
-                    {warehouses.map((w) => (
-                      <td key={w.id} className={cx(p.td, p.num)}>
-                        {formatNumber(row.byWarehouse[w.id] ?? 0)}
-                      </td>
-                    ))}
-                    <td className={cx(p.td, p.num, p.strong)}>{formatNumber(row.total)}</td>
-                    <td className={cx(p.td, p.num)}>{row.product.unitCost ? formatNumber(row.product.unitCost) : '-'}</td>
-                    {warehouses.map((w) => (
-                      <td key={w.id} className={cx(p.td, p.num)}>
-                        {formatNumber((row.byWarehouse[w.id] ?? 0) * row.product.unitCost)}
-                      </td>
-                    ))}
-                    <td className={cx(p.td, p.num, p.strong)}>{formatNumber(row.value)}</td>
-                  </tr>
-                ))}
-                <tr className={s.totalRow}>
-                  <td className={p.td}>합계</td>
-                  {warehouses.map((w) => (
-                    <td key={w.id} className={cx(p.td, p.num)}>
-                      {formatNumber(sumStock(featured, w.id).quantity)}
-                    </td>
-                  ))}
-                  <td className={cx(p.td, p.num)}>{formatNumber(sumStock(featured).quantity)}</td>
-                  <td className={p.td} />
-                  {warehouses.map((w) => (
-                    <td key={w.id} className={cx(p.td, p.num)}>
-                      {formatNumber(sumStock(featured, w.id).value)}
-                    </td>
-                  ))}
-                  <td className={cx(p.td, p.num)}>{formatNumber(sumStock(featured).value)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <FeaturedStock rows={featured} warehouses={warehouses} />
         )}
       </Card>
 
@@ -319,8 +262,6 @@ export function SalesPage() {
           </Card>
         </div>
       )}
-
-      <StorageFeeCard key={`fee-${date}`} date={date} />
 
       {targetOpen && (
         <TargetDialog
