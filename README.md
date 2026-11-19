@@ -19,7 +19,7 @@ Welfin 사내 재고 관리 어드민입니다. 매입처에서 들어온 제품
 ## 처음 설정하기
 
 1. [supabase.com](https://supabase.com)에서 프로젝트를 만듭니다.
-2. SQL Editor에서 `supabase/migrations/0001_init.sql` → `0002_product_guard.sql` 순서로 실행합니다.
+2. SQL Editor에서 `supabase/migrations/0001_init.sql` → `0002_product_guard.sql` → `0003_returns.sql` 순서로 실행합니다.
 3. `.env.example`을 `.env.local`로 복사하고 Project Settings > API의 URL과 Publishable key를 넣습니다.
 4. `supabase/create_user.sql` 안내대로 첫 관리자 계정을 만듭니다.
 5. 실행합니다.
@@ -43,6 +43,19 @@ pnpm dev
    - `VERCEL_TOKEN`
    - `VERCEL_ORG_ID`
    - `VERCEL_PROJECT_ID`
+
+## 회수 (반품·교환)
+
+`/returns` 화면에서 회수 접수 → 회수 송장 등록 → 회수완료 → 검수완료까지 관리합니다.
+
+- 입력칸에 엑셀·메신저 내용을 그대로 붙여넣으면 줄마다 형태를 판별합니다 (`src/features/returns/parse.ts`).
+  - 접수: `관리번호 주문번호 발주일 배송일 수령자 판매처상품 수량` 또는 `수령자 주소 제품 수량 연락처`
+  - 송장: `관리번호 회수송장` 또는 `회수송장 이름 연락처` (줄에 `롯데`/`직접`이 있으면 그 택배사)
+  - 구분: `이름 반품(사유)` / `이름 교환(사유)` (동명이인은 앞에 관리번호)
+- 접수 후 4일이 지나도 회수가 끝나지 않으면 장기 미수로 표시하고, 페이지에 들어올 때 팝업으로 알려줍니다.
+- 배송조회는 Vercel 서버 함수 `api/track.ts`가 [tracker.delivery](https://tracker.delivery)를 호출합니다. 배달완료가 되면 회수완료로 자동 변경됩니다.
+  - Vercel 환경변수에 `TRACKER_DELIVERY_CLIENT_ID`, `TRACKER_DELIVERY_CLIENT_SECRET`을 추가해야 합니다.
+  - 로컬에서 배송조회까지 확인하려면 `pnpm dev` 대신 `npx vercel dev`로 실행합니다.
 
 ## 구조
 

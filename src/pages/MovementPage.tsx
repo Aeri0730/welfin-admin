@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { NavLink } from 'react-router';
 import { useCreateMovements, usePartners, useProducts, useStock, useWarehouses } from '@/api/queries';
 import type { CreateMovementsInput, Warehouse } from '@/api/types';
 import { Button } from '@/components/Button';
@@ -169,6 +170,16 @@ export function MovementPage({ type }: { type: MovementFormType }) {
 
   return (
     <div>
+      {type !== 'transfer' && (
+        <nav className={styles.segment} aria-label="입고/출고 전환">
+          <NavLink to="/inbound" className={styles.segmentItem}>
+            입고
+          </NavLink>
+          <NavLink to="/outbound" className={styles.segmentItem}>
+            출고
+          </NavLink>
+        </nav>
+      )}
       <PageHeader title={config.title} description={config.description} />
 
       <form className={styles.form} onSubmit={handleSubmit} noValidate>

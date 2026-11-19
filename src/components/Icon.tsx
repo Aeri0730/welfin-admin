@@ -11,6 +11,10 @@ const paths = {
   plus: 'M12 5v14M5 12h14',
   close: 'M6 6l12 12M18 6 6 18',
   download: 'M12 3v12m0 0-5-5m5 5 5-5M4 21h16',
+  return: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
+  refresh: 'M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+  swap: 'M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7',
 } as const;
 
 export type IconName = keyof typeof paths;

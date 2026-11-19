@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as inventory from './inventory';
+import * as returns from './returns';
 import type { MovementFilter } from './types';
 
 export const queryKeys = {
@@ -8,6 +9,7 @@ export const queryKeys = {
   partners: ['partners'] as const,
   stock: (date?: string) => ['stock', date ?? 'current'] as const,
   movements: (filter: MovementFilter) => ['movements', filter] as const,
+  returns: ['returns'] as const,
 };
 
 export function useWarehouses() {
@@ -92,3 +94,22 @@ export function useSetPartnerActive() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.partners }),
   });
 }
+
+/* ---------- 회수 ---------- */
+
+export function useReturns() {
+  return useQuery({ queryKey: queryKeys.returns, queryFn: returns.fetchReturns });
+}
+
+function useReturnsMutation<TVariables, TResult>(fn: (variables: TVariables) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.returns }),
+  });
+}
+
+export const useCreateReturns = () => useReturnsMutation(returns.createReturns);
+export const useUpdateReturns = () => useReturnsMutation(returns.updateReturns);
+export const useDeleteReturn = () => useReturnsMutation(returns.deleteReturn);
+export const useRefreshTracking = () => useReturnsMutation(returns.refreshTracking);

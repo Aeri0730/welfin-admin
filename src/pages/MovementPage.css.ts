@@ -82,3 +82,30 @@ export const summaryStrong = style({
 export const submitButton = style({
   minWidth: 120,
 });
+
+/* ---------- 모바일 입고/출고 전환 ---------- */
+export const segment = style({
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  gap: 4,
+  padding: 4,
+  marginBottom: 16,
+  borderRadius: vars.radius.md,
+  background: vars.color.grey200,
+  '@media': {
+    [media.desktop]: { display: 'none' },
+  },
+});
+
+export const segmentItem = style({
+  display: 'grid',
+  placeItems: 'center',
+  height: 40,
+  borderRadius: 10,
+  fontSize: 15,
+  fontWeight: 600,
+  color: vars.color.grey600,
+  selectors: {
+    '&.active': { background: vars.color.white, color: vars.color.grey900, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
+  },
+});
