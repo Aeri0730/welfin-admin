@@ -62,7 +62,8 @@ export const statUnit = style({
 
 export const statRow = style({
   display: 'flex',
-  gap: 20,
+  flexWrap: 'wrap',
+  gap: '12px 20px',
   marginTop: 16,
   paddingTop: 16,
   borderTop: `1px solid ${vars.color.grey100}`,

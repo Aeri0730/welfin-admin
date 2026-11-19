@@ -19,7 +19,7 @@ Welfin 사내 재고 관리 어드민입니다. 매입처에서 들어온 제품
 ## 처음 설정하기
 
 1. [supabase.com](https://supabase.com)에서 프로젝트를 만듭니다.
-2. SQL Editor에서 `supabase/migrations/0001_init.sql` → `0002_product_guard.sql` → `0003_returns.sql` 순서로 실행합니다.
+2. SQL Editor에서 `supabase/migrations/0001_init.sql` → `0002_product_guard.sql` → `0003_returns.sql` → `0004_products_sales.sql` 순서로 실행합니다. (0004는 기존 엑셀의 제품·초기 재고(2026-11-19)와 매출 목표를 함께 넣습니다)
 3. `.env.example`을 `.env.local`로 복사하고 Project Settings > API의 URL과 Publishable key를 넣습니다.
 4. `supabase/create_user.sql` 안내대로 첫 관리자 계정을 만듭니다.
 5. 실행합니다.

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as inventory from './inventory';
 import * as returns from './returns';
+import * as sales from './sales';
 import type { MovementFilter } from './types';
 
 export const queryKeys = {
@@ -10,6 +11,9 @@ export const queryKeys = {
   stock: (date?: string) => ['stock', date ?? 'current'] as const,
   movements: (filter: MovementFilter) => ['movements', filter] as const,
   returns: ['returns'] as const,
+  sales: (from: string, to: string) => ['sales', from, to] as const,
+  salesTargets: ['salesTargets'] as const,
+  storageFees: (from: string, to: string) => ['storageFees', from, to] as const,
 };
 
 export function useWarehouses() {
@@ -113,3 +117,55 @@ export const useCreateReturns = () => useReturnsMutation(returns.createReturns);
 export const useUpdateReturns = () => useReturnsMutation(returns.updateReturns);
 export const useDeleteReturn = () => useReturnsMutation(returns.deleteReturn);
 export const useRefreshTracking = () => useReturnsMutation(returns.refreshTracking);
+
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inventory.updateProduct,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.products }),
+  });
+}
+
+/* ---------- 매출 ---------- */
+
+export function useDailySales(from: string, to: string) {
+  return useQuery({
+    queryKey: queryKeys.sales(from, to),
+    queryFn: () => sales.fetchDailySales({ from, to }),
+  });
+}
+
+export function useSaveDailySales() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: sales.saveDailySales,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sales'] }),
+  });
+}
+
+export function useSalesTargets() {
+  return useQuery({ queryKey: queryKeys.salesTargets, queryFn: sales.fetchSalesTargets });
+}
+
+export function useSaveSalesTarget() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: sales.saveSalesTarget,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.salesTargets }),
+  });
+}
+
+export function useStorageFees(from: string, to: string) {
+  return useQuery({
+    queryKey: queryKeys.storageFees(from, to),
+    queryFn: () => sales.fetchStorageFees({ from, to }),
+  });
+}
+
+export function useSaveStorageFees() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: sales.saveStorageFees,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['storageFees'] }),
+  });
+}

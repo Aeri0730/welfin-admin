@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { HistoryPage } from '@/pages/HistoryPage';
 import { MovementPage } from '@/pages/MovementPage';
 import { ReturnsPage } from '@/pages/ReturnsPage';
+import { SalesPage } from '@/pages/SalesPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { StockPage } from '@/pages/StockPage';
 
@@ -23,6 +24,7 @@ export function App() {
             <Route path="stock" element={<StockPage />} />
             <Route path="inbound" element={<MovementPage key="inbound" type="inbound" />} />
             <Route path="outbound" element={<MovementPage key="outbound" type="outbound" />} />
+            <Route path="sales" element={<SalesPage />} />
             <Route path="returns" element={<ReturnsPage />} />
             <Route path="transfer" element={<MovementPage key="transfer" type="transfer" />} />
             <Route path="history" element={<HistoryPage />} />

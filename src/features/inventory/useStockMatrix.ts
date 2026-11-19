@@ -2,11 +2,30 @@ import { useMemo } from 'react';
 import { useProducts, useStock, useWarehouses } from '@/api/queries';
 import type { Product, Warehouse } from '@/api/types';
 
+/** 안전재고를 따로 정하지 않은 제품의 기준. 합계 재고가 이 개수 이하이면 '미달' */
+export const DEFAULT_SAFETY_STOCK = 15;
+
+export const safetyStockOf = (product: Product) => product.safetyStock || DEFAULT_SAFETY_STOCK;
+
 export interface StockMatrixRow {
   product: Product;
   byWarehouse: Record<number, number>;
   total: number;
+  /** 재고금액 = 합계 수량 × 입고단가 */
+  value: number;
   isLow: boolean;
+}
+
+/** 창고별(또는 전체) 재고 수량·금액 합계 */
+export function sumStock(rows: StockMatrixRow[], warehouseId?: number) {
+  let quantity = 0;
+  let value = 0;
+  for (const row of rows) {
+    const qty = warehouseId === undefined ? row.total : (row.byWarehouse[warehouseId] ?? 0);
+    quantity += qty;
+    value += qty * row.product.unitCost;
+  }
+  return { quantity, value };
 }
 
 /** 제품 × 창고 재고표. date 가 없으면 현재 재고. */
@@ -33,7 +52,8 @@ export function useStockMatrix(date?: string) {
           product,
           byWarehouse,
           total,
-          isLow: product.safetyStock > 0 && total < product.safetyStock,
+          value: total * product.unitCost,
+          isLow: product.isActive && total <= safetyStockOf(product),
         };
       })
       .filter((row) => row.product.isActive || row.total !== 0);

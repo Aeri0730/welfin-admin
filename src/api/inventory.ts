@@ -8,6 +8,8 @@ import type {
   MovementType,
   Partner,
   Product,
+  ProductCategory,
+  ProductPatch,
   StockLevel,
   Warehouse,
 } from './types';
@@ -32,7 +34,7 @@ export async function fetchWarehouses(): Promise<Warehouse[]> {
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('id, sku, name, safety_stock, is_active')
+    .select('id, sku, name, safety_stock, is_active, unit_cost, category, report_order')
     .order('name');
   if (error) throw toError(error);
   return data.map((row) => ({
@@ -41,6 +43,9 @@ export async function fetchProducts(): Promise<Product[]> {
     name: row.name,
     safetyStock: row.safety_stock,
     isActive: row.is_active,
+    unitCost: row.unit_cost ?? 0,
+    category: (row.category ?? 'etc') as ProductCategory,
+    reportOrder: row.report_order ?? null,
   }));
 }
 
@@ -49,7 +54,20 @@ export async function createProduct(input: CreateProductInput): Promise<void> {
     sku: input.sku,
     name: input.name,
     safety_stock: input.safetyStock,
+    unit_cost: input.unitCost,
+    category: input.category,
   });
+  if (error) throw toError(error);
+}
+
+export async function updateProduct({ id, patch }: { id: number; patch: ProductPatch }): Promise<void> {
+  const columns: Record<string, unknown> = {};
+  if (patch.name !== undefined) columns.name = patch.name;
+  if (patch.safetyStock !== undefined) columns.safety_stock = patch.safetyStock;
+  if (patch.unitCost !== undefined) columns.unit_cost = patch.unitCost;
+  if (patch.category !== undefined) columns.category = patch.category;
+  if (patch.reportOrder !== undefined) columns.report_order = patch.reportOrder;
+  const { error } = await supabase.from('products').update(columns).eq('id', id);
   if (error) throw toError(error);
 }
 

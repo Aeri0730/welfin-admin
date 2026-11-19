@@ -18,6 +18,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: '홈', icon: 'home' },
   { to: '/stock', label: '재고 현황', icon: 'box' },
+  { to: '/sales', label: '매출', icon: 'chart' },
   { to: '/inbound', label: '입고', icon: 'inbound' },
   { to: '/outbound', label: '출고', icon: 'outbound' },
   { to: '/returns', label: '회수', icon: 'return' },
@@ -35,7 +36,7 @@ interface TabItem extends NavItem {
 const TAB_ITEMS: TabItem[] = [
   { to: '/', label: '홈', icon: 'home' },
   { to: '/stock', label: '재고', icon: 'box' },
-  { to: '/inbound', label: '입출고', icon: 'swap', match: ['/inbound', '/outbound'] },
+  { to: '/sales', label: '매출', icon: 'chart' },
   { to: '/returns', label: '회수', icon: 'return' },
 ];
 

@@ -8,8 +8,11 @@ import {
   useSetPartnerActive,
   useSetProductActive,
 } from '@/api/queries';
+import { PRODUCT_CATEGORY_LABEL, type Product, type ProductCategory } from '@/api/types';
+import { ProductEditDialog } from '@/features/inventory/ProductEditDialog';
+import { DEFAULT_SAFETY_STOCK } from '@/features/inventory/useStockMatrix';
 import { Button } from '@/components/Button';
-import { TextField } from '@/components/Field';
+import { SelectField, TextField } from '@/components/Field';
 import { useToast } from '@/components/Toast';
 import { Badge, Card, EmptyState, ErrorBox, PageHeader } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
@@ -53,6 +56,9 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [safetyStock, setSafetyStock] = useState('');
+  const [unitCost, setUnitCost] = useState('');
+  const [category, setCategory] = useState<ProductCategory>('etc');
+  const [editing, setEditing] = useState<Product | null>(null);
 
   const canSubmit = sku.trim() && name.trim();
 
@@ -60,13 +66,20 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
     event.preventDefault();
     if (!canSubmit) return;
     createProduct.mutate(
-      { sku: sku.trim(), name: name.trim(), safetyStock: Number(safetyStock) || 0 },
+      {
+        sku: sku.trim(),
+        name: name.trim(),
+        safetyStock: Number(safetyStock) || DEFAULT_SAFETY_STOCK,
+        unitCost: Number(unitCost) || 0,
+        category,
+      },
       {
         onSuccess: () => {
           toast(`${name.trim()}을(를) 추가했어요`);
           setSku('');
           setName('');
           setSafetyStock('');
+          setUnitCost('');
         },
       },
     );
@@ -82,11 +95,26 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
             <TextField
               label="안전재고"
               inputMode="numeric"
-              placeholder="0"
-              hint="합계 재고가 이보다 적으면 알려드려요"
-              value={safetyStock}
+              placeholder="15"
+              hint="합계 재고가 이 개수 이하이면 '미달'로 알려드려요"
+              value={safetyStock ? formatNumber(Number(safetyStock)) : ''}
               onChange={(e) => setSafetyStock(e.target.value.replace(/\D/g, '').slice(0, 7))}
             />
+            <TextField
+              label="입고단가(원)"
+              inputMode="numeric"
+              placeholder="0"
+              hint="재고금액 = 수량 × 입고단가"
+              value={unitCost ? formatNumber(Number(unitCost)) : ''}
+              onChange={(e) => setUnitCost(e.target.value.replace(/\D/g, '').slice(0, 9))}
+            />
+            <SelectField label="구분" value={category} onChange={(e) => setCategory(e.target.value as ProductCategory)}>
+              {(Object.keys(PRODUCT_CATEGORY_LABEL) as ProductCategory[]).map((key) => (
+                <option key={key} value={key}>
+                  {PRODUCT_CATEGORY_LABEL[key]}
+                </option>
+              ))}
+            </SelectField>
           </div>
           {createProduct.error && <ErrorBox error={createProduct.error} />}
           <Button type="submit" variant="secondary" fullWidth disabled={!canSubmit} loading={createProduct.isPending}>
@@ -109,11 +137,15 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
                   {!p.isActive && <Badge>미사용</Badge>}
                 </p>
                 <p className={s.listMeta}>
-                  {p.sku} · 안전재고 {formatNumber(p.safetyStock)}개
+                  {p.sku} · {PRODUCT_CATEGORY_LABEL[p.category]} · 단가 {p.unitCost ? `${formatNumber(p.unitCost)}원` : '-'} · 안전재고{' '}
+                  {formatNumber(p.safetyStock)}개{p.reportOrder !== null && ` · 매출 탭 ${p.reportOrder}번`}
                 </p>
               </div>
               {isAdmin && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <Button variant="weak" size="sm" onClick={() => setEditing(p)}>
+                    수정
+                  </Button>
                   <Button
                     variant="weak"
                     size="sm"
@@ -136,6 +168,7 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
           ))}
         </ul>
       )}
+      {editing && <ProductEditDialog key={editing.id} product={editing} onClose={() => setEditing(null)} />}
     </Card>
   );
 }

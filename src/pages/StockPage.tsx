@@ -3,7 +3,7 @@ import { Button } from '@/components/Button';
 import { SelectField, TextField } from '@/components/Field';
 import { Icon } from '@/components/Icon';
 import { Badge, Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
-import { useStockMatrix } from '@/features/inventory/useStockMatrix';
+import { safetyStockOf, useStockMatrix } from '@/features/inventory/useStockMatrix';
 import { cx } from '@/lib/cx';
 import { downloadCsv } from '@/lib/csv';
 import { formatNumber, today } from '@/lib/format';
@@ -37,7 +37,7 @@ export function StockPage() {
         row.product.sku,
         ...warehouses.map((w) => row.byWarehouse[w.id] ?? 0),
         row.total,
-        row.product.safetyStock,
+        safetyStockOf(row.product),
       ]),
     );
   };
@@ -127,7 +127,7 @@ export function StockPage() {
                       </td>
                       <td className={cx(s.td, s.num)}>
                         {row.isLow ? <Badge tone="red">부족</Badge> : null}{' '}
-                        <span className={s.muted}>{formatNumber(row.product.safetyStock)}</span>
+                        <span className={s.muted}>{formatNumber(safetyStockOf(row.product))}</span>
                       </td>
                     </tr>
                   ))}

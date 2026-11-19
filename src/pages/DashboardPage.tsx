@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useMovements } from '@/api/queries';
-import { MOVEMENT_LABEL } from '@/api/types';
+import { MOVEMENT_LABEL, PRODUCT_CATEGORY_LABEL, type ProductCategory } from '@/api/types';
 import { Icon } from '@/components/Icon';
 import { Badge, Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
 import { MOVEMENT_TONE, describeRoute } from '@/features/inventory/movement';
-import { useStockMatrix } from '@/features/inventory/useStockMatrix';
+import { safetyStockOf, sumStock, useStockMatrix } from '@/features/inventory/useStockMatrix';
 import { cx } from '@/lib/cx';
 import { formatDateLabel, formatNumber, today } from '@/lib/format';
 import * as s from './pages.css';
@@ -20,20 +20,26 @@ export function DashboardPage() {
   const warehouseSummary = useMemo(() => {
     const movements = todayMovements.data ?? [];
     return warehouses.map((warehouse) => {
-      const total = rows.reduce((sum, row) => sum + (row.byWarehouse[warehouse.id] ?? 0), 0);
+      const { quantity: total, value } = sumStock(rows, warehouse.id);
       const inQty = movements
         .filter((m) => m.toWarehouse?.id === warehouse.id)
         .reduce((sum, m) => sum + m.quantity, 0);
       const outQty = movements
         .filter((m) => m.fromWarehouse?.id === warehouse.id)
         .reduce((sum, m) => sum + m.quantity, 0);
-      return { warehouse, total, inQty, outQty };
+      return { warehouse, total, value, inQty, outQty };
     });
   }, [warehouses, rows, todayMovements.data]);
 
+  const totalValue = sumStock(rows).value;
+  const valueByCategory = (Object.keys(PRODUCT_CATEGORY_LABEL) as ProductCategory[]).map((category) => ({
+    category,
+    value: sumStock(rows.filter((row) => row.product.category === category)).value,
+  }));
+
   const lowStock = rows
     .filter((row) => row.isLow)
-    .sort((a, b) => a.total / a.product.safetyStock - b.total / b.product.safetyStock);
+    .sort((a, b) => a.total / safetyStockOf(a.product) - b.total / safetyStockOf(b.product));
 
   return (
     <div className={s.stack}>
@@ -52,12 +58,15 @@ export function DashboardPage() {
                 <Skeleton height={34} width={140} style={{ marginTop: 10 }} />
               </Card>
             ))
-          : warehouseSummary.map(({ warehouse, total, inQty, outQty }) => (
+          : warehouseSummary.map(({ warehouse, total, value, inQty, outQty }) => (
               <Card key={warehouse.id}>
                 <p className={s.statLabel}>{warehouse.name} 재고</p>
                 <p className={s.statValue}>
                   {formatNumber(total)}
                   <span className={s.statUnit}>개</span>
+                </p>
+                <p className={s.statMini} style={{ marginTop: 4 }}>
+                  재고금액 <b className={s.strong}>{formatNumber(value)}원</b>
                 </p>
                 <div className={s.statRow}>
                   <div>
@@ -72,6 +81,24 @@ export function DashboardPage() {
               </Card>
             ))}
       </div>
+
+      {!isLoading && (
+        <Card>
+          <p className={s.statLabel}>전체 재고금액</p>
+          <p className={s.statValue}>
+            {formatNumber(totalValue)}
+            <span className={s.statUnit}>원</span>
+          </p>
+          <div className={s.statRow}>
+            {valueByCategory.map(({ category, value }) => (
+              <div key={category}>
+                <p className={s.statMini}>{PRODUCT_CATEGORY_LABEL[category]} 재고</p>
+                <p className={s.statMiniValue}>{formatNumber(value)}원</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className={s.quickActions}>
         <Link to="/inbound" className={s.quickAction}>
@@ -110,7 +137,7 @@ export function DashboardPage() {
                 <li key={row.product.id} className={s.listItem}>
                   <div className={s.listMain}>
                     <p className={s.listTitle}>{row.product.name}</p>
-                    <p className={s.listMeta}>안전재고 {formatNumber(row.product.safetyStock)}개</p>
+                    <p className={s.listMeta}>안전재고 {formatNumber(safetyStockOf(row.product))}개</p>
                   </div>
                   <span className={cx(s.listRight, s.minus)}>{formatNumber(row.total)}개</span>
                 </li>

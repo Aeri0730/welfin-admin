@@ -24,12 +24,25 @@ export interface Partner {
   isActive: boolean;
 }
 
+export type ProductCategory = 'winter' | 'summer' | 'etc';
+
+export const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
+  winter: '겨울',
+  summer: '여름',
+  etc: '나머지',
+};
+
 export interface Product {
   id: number;
   sku: string;
   name: string;
   safetyStock: number;
   isActive: boolean;
+  /** 입고단가(원). 재고금액 = 수량 × 입고단가 */
+  unitCost: number;
+  category: ProductCategory;
+  /** 매출 탭 '주요 제품 재고' 순서. null 이면 안 보임 */
+  reportOrder: number | null;
 }
 
 export interface StockLevel {
@@ -83,6 +96,16 @@ export interface CreateProductInput {
   sku: string;
   name: string;
   safetyStock: number;
+  unitCost: number;
+  category: ProductCategory;
+}
+
+export interface ProductPatch {
+  name?: string;
+  safetyStock?: number;
+  unitCost?: number;
+  category?: ProductCategory;
+  reportOrder?: number | null;
 }
 
 export interface CreatePartnerInput {
@@ -188,4 +211,35 @@ export interface ReturnPatch {
   invoiceNo?: string | null;
   status?: ReturnStatus;
   memo?: string | null;
+}
+
+/* ---------- 매출 ---------- */
+
+export interface DailySales {
+  salesOn: string;
+  warehouseId: number;
+  amount: number;
+  quantity: number;
+  memo: string | null;
+}
+
+export interface SalesTarget {
+  /** '2026'(연간) 또는 '2026-11'(월간) */
+  period: string;
+  amount: number;
+}
+
+export type StorageKind = 'pallet' | 'rack';
+
+export const STORAGE_KIND_LABEL: Record<StorageKind, string> = {
+  pallet: '팔레트',
+  rack: '경량랙',
+};
+
+export interface StorageFee {
+  storedOn: string;
+  kind: StorageKind;
+  quantity: number;
+  /** 부가세 포함 단가(원) */
+  unitPrice: number;
 }
