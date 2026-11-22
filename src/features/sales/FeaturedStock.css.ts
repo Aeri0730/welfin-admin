@@ -46,6 +46,7 @@ export const td = style({
 });
 
 export const name = style({
+  minWidth: 170,
   paddingLeft: 0,
   whiteSpace: 'normal',
   wordBreak: 'keep-all',

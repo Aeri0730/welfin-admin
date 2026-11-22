@@ -33,7 +33,7 @@ export const sectionTitle = style({ fontSize: 17, fontWeight: 700, color: vars.c
 
 export const fieldGrid = style({
   display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
   gap: 10,
 });
 

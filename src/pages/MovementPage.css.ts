@@ -1,4 +1,4 @@
-import { style } from '@vanilla-extract/css';
+import { globalStyle, style } from '@vanilla-extract/css';
 import { media, vars } from '@/styles/theme.css';
 
 export const form = style({
@@ -20,8 +20,9 @@ export const fields = style({
 });
 
 export const itemsHeader = style({
-  display: 'grid',
-  gridTemplateColumns: '1fr 104px 40px',
+  display: 'none',
+  gridTemplateColumns: 'minmax(0, 1fr) 104px 40px',
+  '@media': { [media.tablet]: { display: 'grid' } },
   gap: 8,
   marginBottom: 8,
   fontSize: 13,
@@ -29,9 +30,11 @@ export const itemsHeader = style({
   color: vars.color.grey600,
 });
 
+/** 모바일: 제품 선택은 한 줄 전체, 아래 줄에 수량 · 삭제. 태블릿 이상: 한 줄 */
 export const itemRow = style({
   display: 'grid',
-  gridTemplateColumns: '1fr 104px 40px',
+  gridTemplateColumns: 'minmax(0, 1fr) 40px',
+  '@media': { [media.tablet]: { gridTemplateColumns: 'minmax(0, 1fr) 104px 40px' } },
   gap: 8,
   alignItems: 'start',
   selectors: {
@@ -86,7 +89,7 @@ export const submitButton = style({
 /* ---------- 모바일 입고/출고 전환 ---------- */
 export const segment = style({
   display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
   gap: 4,
   padding: 4,
   marginBottom: 16,
@@ -108,4 +111,9 @@ export const segmentItem = style({
   selectors: {
     '&.active': { background: vars.color.white, color: vars.color.grey900, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
   },
+});
+
+globalStyle(`${itemRow} > :first-child`, {
+  gridColumn: '1 / -1',
+  '@media': { [media.tablet]: { gridColumn: 'auto' } },
 });

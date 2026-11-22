@@ -264,7 +264,7 @@ export function MovementPage({ type }: { type: MovementFormType }) {
                 <TextField
                   aria-label="수량"
                   inputMode="numeric"
-                  placeholder="0"
+                  placeholder="수량"
                   className={styles.quantityInput}
                   value={item.quantity}
                   onChange={(e) => updateItem(item.key, { quantity: e.target.value.replace(/\D/g, '').slice(0, 7) })}

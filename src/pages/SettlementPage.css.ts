@@ -10,7 +10,7 @@ export const formGrid = style({
   display: 'grid',
   gap: 12,
   marginTop: 16,
-  gridTemplateColumns: '1fr 1fr',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
   '@media': {
     [media.tablet]: { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' },
   },

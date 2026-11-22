@@ -6,7 +6,7 @@ export const shell = style({
   '@media': {
     [media.desktop]: {
       display: 'grid',
-      gridTemplateColumns: `${vars.layout.sidebar} 1fr`,
+      gridTemplateColumns: `${vars.layout.sidebar} minmax(0, 1fr)`,
     },
   },
 });
@@ -149,7 +149,7 @@ export const tabBar = style({
   bottom: 0,
   zIndex: 30,
   display: 'grid',
-  gridTemplateColumns: 'repeat(5, 1fr)',
+  gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
   height: `calc(${vars.layout.tabBar} + env(safe-area-inset-bottom))`,
   paddingBottom: 'env(safe-area-inset-bottom)',
   background: vars.color.white,

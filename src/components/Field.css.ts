@@ -16,6 +16,7 @@ export const label = style({
 
 const controlBase = style({
   width: '100%',
+  minWidth: 0,
   height: 48,
   padding: '0 14px',
   fontSize: 16,
@@ -38,7 +39,18 @@ const controlBase = style({
   },
 });
 
-export const input = style([controlBase]);
+export const input = style([
+  controlBase,
+  {
+    selectors: {
+      // 날짜칸: 좁은 모바일 칸에서 글자와 달력 아이콘이 겹치지 않게
+      // iOS Safari 는 날짜칸이 width 를 무시하고 넓어지므로 기본 모양을 끈다
+      '&[type="date"]': { paddingRight: 8, WebkitAppearance: 'none', appearance: 'none', display: 'block', lineHeight: '46px' },
+      '&::-webkit-date-and-time-value': { textAlign: 'left' },
+      '&::-webkit-calendar-picker-indicator': { marginLeft: 0 },
+    },
+  },
+]);
 
 const chevron =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%238B95A1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";

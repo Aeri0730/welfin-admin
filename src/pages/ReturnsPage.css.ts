@@ -14,9 +14,9 @@ export const inputGrid = style({
 export const inputSide = style({
   display: 'grid',
   gap: 12,
-  gridTemplateColumns: '1fr 1fr',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
   '@media': {
-    [media.tablet]: { gridTemplateColumns: '1fr' },
+    [media.tablet]: { gridTemplateColumns: 'minmax(0, 1fr)' },
   },
 });
 
@@ -107,6 +107,8 @@ export const filterTabs = style({
   display: 'flex',
   gap: 4,
   overflowX: 'auto',
+  overflowY: 'hidden',
+  overscrollBehaviorX: 'contain',
   margin: '12px -20px 0',
   padding: '0 20px',
   borderBottom: `1px solid ${vars.color.grey200}`,
@@ -318,7 +320,7 @@ export const formGrid = style({
   gap: 12,
   marginTop: 16,
   '@media': {
-    [media.tablet]: { gridTemplateColumns: '1fr 1fr' },
+    [media.tablet]: { gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' },
   },
 });
 

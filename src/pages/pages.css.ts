@@ -21,10 +21,11 @@ export const cardGrid = style({
 
 export const twoColumn = style({
   display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: 12,
   alignItems: "start",
   "@media": {
-    [media.desktop]: { gridTemplateColumns: "1fr 1fr", gap: 16 },
+    [media.desktop]: { gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 },
   },
 });
 
@@ -88,7 +89,7 @@ export const minus = style({ color: vars.color.red500 });
 export const filterBar = style({
   display: "grid",
   gap: 12,
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
   "@media": {
     [media.desktop]: { gridTemplateColumns: "repeat(4, minmax(0, 1fr))" },
   },
@@ -277,7 +278,7 @@ export const linkText = style({
 
 export const quickActions = style({
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: 8,
 });
 

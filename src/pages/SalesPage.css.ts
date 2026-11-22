@@ -10,15 +10,23 @@ export const dateBar = style({
 
 // 목표 대비 실적: 항목을 한 줄로 가로 나열 (좁은 화면에서는 옆으로 스크롤)
 export const targetGrid = style({
-  display: 'flex',
-  gap: 24,
-  overflowX: 'auto',
-  whiteSpace: 'nowrap',
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: '16px 12px',
+  '@media': {
+    [media.tablet]: { display: 'flex', gap: 24, whiteSpace: 'nowrap' },
+  },
 });
 
 // vanilla-extract 는 style() 안에서 자식 선택자를 못 써서 globalStyle 로 지정
-globalStyle(`${targetGrid} > div`, { flex: '1 0 auto', minWidth: 0 });
-globalStyle(`${targetGrid} > div + div`, { paddingLeft: 24, borderLeft: `1px solid ${vars.color.grey100}` });
+globalStyle(`${targetGrid} > div`, {
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+  '@media': { [media.tablet]: { flex: '1 0 auto' } },
+});
+globalStyle(`${targetGrid} > div + div`, {
+  '@media': { [media.tablet]: { paddingLeft: 24, borderLeft: `1px solid ${vars.color.grey100}` } },
+});
 
 /** 월 실적 입력 줄 */
 export const actualRow = style({
@@ -51,7 +59,7 @@ export const inputGrid = style({
   display: 'grid',
   gap: 12,
   '@media': {
-    [media.tablet]: { gridTemplateColumns: '120px 1fr 1fr', alignItems: 'end' },
+    [media.tablet]: { gridTemplateColumns: '120px minmax(0, 1fr) minmax(0, 1fr)', alignItems: 'end' },
   },
 });
 
@@ -82,7 +90,7 @@ export const chartGrid = style({
   display: 'grid',
   gap: 16,
   '@media': {
-    [media.desktop]: { gridTemplateColumns: '1fr 1fr' },
+    [media.desktop]: { gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' },
   },
 });
 
@@ -107,12 +115,12 @@ export const inputSub = style({
 export const extraGrid = style({
   display: 'grid',
   gap: 12,
-  gridTemplateColumns: '1fr 1fr 40px',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) 40px',
   alignItems: 'end',
   paddingTop: 12,
   borderTop: `1px dashed ${vars.color.grey200}`,
   '@media': {
-    [media.tablet]: { gridTemplateColumns: '120px 1fr 1fr 40px' },
+    [media.tablet]: { gridTemplateColumns: '120px minmax(0, 1fr) minmax(0, 1fr) 40px' },
   },
 });
 
