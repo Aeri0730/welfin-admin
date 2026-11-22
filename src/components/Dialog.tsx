@@ -9,9 +9,11 @@ interface DialogProps {
   children?: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** 제목 오른쪽 위에 놓을 버튼 */
+  headerAction?: ReactNode;
 }
 
-export function Dialog({ open, onClose, title, children, footer, wide }: DialogProps) {
+export function Dialog({ open, onClose, title, children, footer, wide, headerAction }: DialogProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -29,7 +31,14 @@ export function Dialog({ open, onClose, title, children, footer, wide }: DialogP
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className={styles.title}>{title}</h2>
+        {headerAction ? (
+          <div className={styles.header}>
+            <h2 className={styles.title}>{title}</h2>
+            <div className={styles.headerAction}>{headerAction}</div>
+          </div>
+        ) : (
+          <h2 className={styles.title}>{title}</h2>
+        )}
         {children && <div className={styles.body}>{children}</div>}
         {footer && <div className={styles.footer}>{footer}</div>}
       </div>

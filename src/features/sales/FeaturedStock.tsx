@@ -18,16 +18,14 @@ function Num({ value, strong }: { value: number; strong?: boolean }) {
 
 /**
  * 주요 제품 재고량·재고액.
- * 태블릿 이상: 수량 / 단가 / 금액을 묶은 표. 모바일: 제품별 카드.
+ * 수량 / 단가 / 금액을 묶은 표 (좁은 화면에서는 가로로 스크롤).
  */
 export function FeaturedStock({ rows, warehouses }: FeaturedStockProps) {
   const qtyOf = (row: StockMatrixRow, warehouseId: number) => row.byWarehouse[warehouseId] ?? 0;
   const valueOf = (row: StockMatrixRow, warehouseId: number) => qtyOf(row, warehouseId) * row.product.unitCost;
 
   return (
-    <>
-      {/* 태블릿 이상 */}
-      <div className={cx(p.tableWrap, p.responsiveOnly.desktop)}>
+    <div className={p.tableWrap}>
         <table className={s.table}>
           <colgroup>
             <col className={s.nameCol} />
@@ -116,48 +114,6 @@ export function FeaturedStock({ rows, warehouses }: FeaturedStockProps) {
             </tr>
           </tfoot>
         </table>
-      </div>
-
-      {/* 모바일 */}
-      <ul className={cx(s.cards, p.responsiveOnly.mobile)}>
-        {rows.map((row) => (
-          <li key={row.product.id} className={s.card}>
-            <p className={s.cardTitle}>{row.product.name}</p>
-            <dl className={s.cardGrid}>
-              <dt className={s.cardHead} />
-              <dt className={cx(s.cardHead, s.right)}>수량</dt>
-              <dt className={cx(s.cardHead, s.right)}>금액</dt>
-              {warehouses.map((w) => (
-                <div key={w.id} className={s.cardLine}>
-                  <dt className={s.cardLabel}>{w.name}</dt>
-                  <dd className={s.cardValue}>
-                    <Num value={qtyOf(row, w.id)} />
-                  </dd>
-                  <dd className={s.cardValue}>
-                    <Num value={valueOf(row, w.id)} />
-                  </dd>
-                </div>
-              ))}
-              <div className={s.cardLine}>
-                <dt className={cx(s.cardLabel, s.cardTotalCell)}>합계</dt>
-                <dd className={cx(s.cardValue, s.cardTotalCell)}>
-                  <Num value={row.total} strong />
-                </dd>
-                <dd className={cx(s.cardValue, s.cardTotalCell)}>
-                  <Num value={row.value} strong />
-                </dd>
-              </div>
-            </dl>
-            <p className={s.cardMeta}>입고단가 {row.product.unitCost ? `${formatNumber(row.product.unitCost)}원` : '-'}</p>
-          </li>
-        ))}
-        <li className={cx(s.card, s.cardSum)}>
-          <span>합계</span>
-          <span>
-            {formatNumber(sumStock(rows).quantity)}개 · <b>{formatNumber(sumStock(rows).value)}원</b>
-          </span>
-        </li>
-      </ul>
-    </>
+    </div>
   );
 }

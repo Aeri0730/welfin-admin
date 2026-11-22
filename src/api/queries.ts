@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as inventory from './inventory';
 import * as returns from './returns';
 import * as sales from './sales';
-import type { MovementFilter } from './types';
+import * as settlements from './settlements';
+import * as storage from './storage';
+import type { MovementFilter, SettlementKind } from './types';
 
 export const queryKeys = {
   warehouses: ['warehouses'] as const,
@@ -14,6 +16,8 @@ export const queryKeys = {
   sales: (from: string, to: string) => ['sales', from, to] as const,
   salesTargets: ['salesTargets'] as const,
   storageFees: (from: string, to: string) => ['storageFees', from, to] as const,
+  storageDays: (from: string, to: string) => ['storageFees', 'days', from, to] as const,
+  storageItems: (date: string) => ['storageFees', 'items', date] as const,
 };
 
 export function useWarehouses() {
@@ -143,6 +147,45 @@ export function useSaveDailySales() {
   });
 }
 
+export function useSalesExtras(from: string, to: string) {
+  return useQuery({
+    queryKey: ['sales', 'extras', from, to],
+    queryFn: () => sales.fetchSalesExtras({ from, to }),
+  });
+}
+
+export function useSaveSalesExtras() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: sales.saveSalesExtras,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sales'] }),
+  });
+}
+
+export function useSalesBaseline() {
+  return useQuery({ queryKey: ['sales', 'baseline'], queryFn: sales.fetchSalesBaseline });
+}
+
+export function useSaveSalesBaseline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: sales.saveSalesBaseline,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sales'] }),
+  });
+}
+
+export function useSalesActuals(from: string, to: string) {
+  return useQuery({ queryKey: ['sales', 'actuals', from, to], queryFn: () => sales.fetchSalesActuals({ from, to }) });
+}
+
+export function useSaveSalesActual() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: sales.saveSalesActual,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['sales', 'actuals'] }),
+  });
+}
+
 export function useSalesTargets() {
   return useQuery({ queryKey: queryKeys.salesTargets, queryFn: sales.fetchSalesTargets });
 }
@@ -155,17 +198,73 @@ export function useSaveSalesTarget() {
   });
 }
 
-export function useStorageFees(from: string, to: string) {
+/* ---------- 보관비 ---------- */
+
+export function useStorageDays(from: string, to: string) {
   return useQuery({
-    queryKey: queryKeys.storageFees(from, to),
-    queryFn: () => sales.fetchStorageFees({ from, to }),
+    queryKey: queryKeys.storageDays(from, to),
+    queryFn: () => storage.fetchStorageDays({ from, to }),
   });
 }
 
-export function useSaveStorageFees() {
+export function useStorageItems(date: string) {
+  return useQuery({
+    queryKey: queryKeys.storageItems(date),
+    queryFn: () => storage.fetchStorageItems(date),
+  });
+}
+
+function useStorageMutation<TVariables, TResult>(fn: (variables: TVariables) => Promise<TResult>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: sales.saveStorageFees,
+    mutationFn: fn,
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['storageFees'] }),
+  });
+}
+
+export const useSaveStorageDays = () => useStorageMutation(storage.saveStorageDays);
+export const useSaveStorageItems = () => useStorageMutation(storage.saveStorageItems);
+export const useDeleteStorageDay = () => useStorageMutation(storage.deleteStorageDay);
+export const useSaveStorageMemo = () => useStorageMutation(storage.saveStorageMemo);
+
+/* ---------- 정산 ---------- */
+
+export function useSettlements(kind: SettlementKind) {
+  return useQuery({ queryKey: ['settlements', kind], queryFn: () => settlements.fetchSettlements(kind) });
+}
+
+export function useSaveSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settlements.saveSettlement,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settlements'] }),
+  });
+}
+
+export function useDeleteSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settlements.deleteSettlement,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['settlements'] }),
+  });
+}
+
+export function useDispatches() {
+  return useQuery({ queryKey: ['dispatches'], queryFn: settlements.fetchDispatches });
+}
+
+export function useSaveDispatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settlements.saveDispatch,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['dispatches'] }),
+  });
+}
+
+export function useDeleteDispatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settlements.deleteDispatch,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['dispatches'] }),
   });
 }

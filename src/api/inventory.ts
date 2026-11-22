@@ -18,6 +18,12 @@ import type {
 function toError(error: { message: string; code?: string }): Error {
   if (error.code === '23505') return new Error('이미 등록된 값이에요');
   if (error.code === '42501') return new Error('권한이 없어요. 관리자에게 문의해주세요');
+  if (error.code === '23514' && error.message.includes('category')) {
+    return new Error("'4계절'을 저장하려면 supabase/migrations/0007_product_season.sql 을 먼저 실행해주세요");
+  }
+  if (error.code === '42703' || error.code === 'PGRST204') {
+    return new Error('보관 기준 칸이 없어요. supabase/migrations/0006_storage.sql 을 먼저 실행해주세요');
+  }
   return new Error(error.message);
 }
 
@@ -31,11 +37,30 @@ export async function fetchWarehouses(): Promise<Warehouse[]> {
   return data;
 }
 
+interface ProductRow {
+  id: number;
+  sku: string;
+  name: string;
+  safety_stock: number;
+  is_active: boolean;
+  unit_cost: number | null;
+  category: string | null;
+  report_order: number | null;
+  ezadmin_code?: string | null;
+  pallet_capacity?: number | null;
+  rack_capacity?: number | null;
+  storage_exempt?: boolean | null;
+}
+
+const PRODUCT_COLUMNS = 'id, sku, name, safety_stock, is_active, unit_cost, category, report_order';
+const STORAGE_COLUMNS = 'ezadmin_code, pallet_capacity, rack_capacity, storage_exempt';
+
 export async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, sku, name, safety_stock, is_active, unit_cost, category, report_order')
-    .order('name');
+  const load = (columns: string) => supabase.from('products').select(columns).order('name').returns<ProductRow[]>();
+  let result = await load(`${PRODUCT_COLUMNS}, ${STORAGE_COLUMNS}`);
+  // 0006_storage.sql 을 아직 실행하지 않았으면 보관 기준 없이 읽는다
+  if (result.error?.code === '42703') result = await load(PRODUCT_COLUMNS);
+  const { data, error } = result;
   if (error) throw toError(error);
   return data.map((row) => ({
     id: row.id,
@@ -46,6 +71,10 @@ export async function fetchProducts(): Promise<Product[]> {
     unitCost: row.unit_cost ?? 0,
     category: (row.category ?? 'etc') as ProductCategory,
     reportOrder: row.report_order ?? null,
+    ezadminCode: row.ezadmin_code ?? null,
+    palletCapacity: row.pallet_capacity ?? null,
+    rackCapacity: row.rack_capacity ?? null,
+    storageExempt: Boolean(row.storage_exempt),
   }));
 }
 
@@ -67,6 +96,10 @@ export async function updateProduct({ id, patch }: { id: number; patch: ProductP
   if (patch.unitCost !== undefined) columns.unit_cost = patch.unitCost;
   if (patch.category !== undefined) columns.category = patch.category;
   if (patch.reportOrder !== undefined) columns.report_order = patch.reportOrder;
+  if (patch.ezadminCode !== undefined) columns.ezadmin_code = patch.ezadminCode;
+  if (patch.palletCapacity !== undefined) columns.pallet_capacity = patch.palletCapacity;
+  if (patch.rackCapacity !== undefined) columns.rack_capacity = patch.rackCapacity;
+  if (patch.storageExempt !== undefined) columns.storage_exempt = patch.storageExempt;
   const { error } = await supabase.from('products').update(columns).eq('id', id);
   if (error) throw toError(error);
 }

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useDeleteReturn, useUpdateReturns } from '@/api/queries';
 import {
   CARRIER_LABEL,
+  RETURN_CHANNEL_LABEL,
   RETURN_KIND_LABEL,
+  returnChannel,
   RETURN_STATUS_LABEL,
   type Carrier,
   type ReturnItem,
@@ -33,7 +35,20 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
   const [invoiceNo, setInvoiceNo] = useState(item.invoiceNo ?? '');
   const [status, setStatus] = useState<ReturnStatus>(item.status);
   const [memo, setMemo] = useState(item.memo ?? '');
+  const [rerequestCount, setRerequestCount] = useState(String(item.rerequestCount + 1));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /** 양품화는 누르는 즉시 저장 (다른 칸 저장과 별개) */
+  const [restocked, setRestocked] = useState(item.restocked);
+  const restock = useUpdateReturns();
+
+  const toggleRestocked = () => {
+    const next = !restocked;
+    setRestocked(next);
+    restock.mutate([{ current: item, patch: { restocked: next } }], {
+      onSuccess: () => toast(next ? '양품화로 표시했어요' : '양품화 표시를 지웠어요'),
+      onError: () => setRestocked(!next),
+    });
+  };
 
   const handleSave = () => {
     const invoice = digits(invoiceNo) || null;
@@ -55,6 +70,7 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
             invoiceNo: invoice,
             status: statusChanged ? status : undefined,
             memo: memo.trim() || null,
+            rerequestCount: Math.max(1, Number(rerequestCount) || 1) - 1,
           },
         },
       ],
@@ -85,7 +101,18 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
       open
       wide
       onClose={onClose}
-      title={`${item.recipient} 님 회수 건${item.mgmtNo ? ` · ${item.mgmtNo}` : ''}`}
+      title={`${item.recipient} 님 회수 건${item.mgmtNo ? ` · ${item.mgmtNo}` : ''} (${RETURN_CHANNEL_LABEL[returnChannel(item)]})`}
+      headerAction={
+        <Button
+          size="sm"
+          variant={restocked ? 'primary' : 'weak'}
+          onClick={toggleRestocked}
+          loading={restock.isPending}
+          aria-pressed={restocked}
+        >
+          {restocked ? '✓ 양품화' : '양품화'}
+        </Button>
+      }
       footer={
         <>
           <Button variant="danger" onClick={handleDelete} loading={deleteReturn.isPending}>
@@ -147,11 +174,21 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
             </option>
           ))}
         </SelectField>
+        <TextField
+          label="접수 차수"
+          inputMode="numeric"
+          value={rerequestCount}
+          onChange={(e) => setRerequestCount(e.target.value.replace(/\D/g, '').slice(0, 2))}
+          hint="1 = 최초 접수, 2 = 재접수. 3차 접수까지 했는데 집화가 안 되면 장기 미수로 보여요"
+        />
         <TextAreaField label="메모" containerClassName={s.full} value={memo} onChange={(e) => setMemo(e.target.value)} />
       </div>
-      {(updateReturns.error || deleteReturn.error) && (
+      {restocked && item.restockedAt && (
+        <p style={{ marginTop: 8, fontSize: 13 }}>양품화 처리 {item.restockedAt.slice(0, 10)}</p>
+      )}
+      {(updateReturns.error || deleteReturn.error || restock.error) && (
         <div style={{ marginTop: 12 }}>
-          <ErrorBox error={updateReturns.error ?? deleteReturn.error} />
+          <ErrorBox error={updateReturns.error ?? deleteReturn.error ?? restock.error} />
         </div>
       )}
     </Dialog>

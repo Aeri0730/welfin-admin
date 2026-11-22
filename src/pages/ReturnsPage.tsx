@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProducts, useRefreshTracking, useReturns, useUpdateReturns } from '@/api/queries';
-import { RETURN_STATUS_LABEL, type ReturnItem, type ReturnStatus } from '@/api/types';
+import { RETURN_CHANNEL_LABEL, RETURN_STATUS_LABEL, returnChannel, type ReturnItem, type ReturnStatus } from '@/api/types';
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/Field';
 import { Dialog } from '@/components/Dialog';
@@ -10,7 +10,7 @@ import { Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/u
 import { ReturnEditDialog } from '@/features/returns/ReturnEditDialog';
 import { ReturnInput } from '@/features/returns/ReturnInput';
 import { ReturnRow } from '@/features/returns/ReturnRow';
-import { FILTERS, isTrackable, matchesFilter, matchesSearch, OVERDUE_DAYS, type ReturnFilter } from '@/features/returns/status';
+import { FILTERS, isTrackable, matchesFilter, matchesSearch, OVERDUE_ATTEMPT, attemptLabel, attemptOf, type ReturnFilter } from '@/features/returns/status';
 import { downloadCsv } from '@/lib/csv';
 import { today } from '@/lib/format';
 import * as s from './ReturnsPage.css';
@@ -168,9 +168,11 @@ export function ReturnsPage() {
     const label = FILTERS.find((f) => f.key === filter)?.label ?? '';
     downloadCsv(
       `회수_${label}_${todayString}.csv`,
-      ['접수일', '상태', '관리번호', '주문번호', '수령자', '연락처', '주소', '제품', '수량', '구분', '사유', '택배사', '회수송장', '배송현황', '메모'],
+      ['접수일', '접수처', '접수 차수', '상태', '관리번호', '주문번호', '수령자', '연락처', '주소', '제품', '수량', '구분', '사유', '택배사', '회수송장', '배송현황', '메모'],
       visible.map((r) => [
         r.receivedOn,
+        RETURN_CHANNEL_LABEL[returnChannel(r)],
+        attemptLabel(attemptOf(r.rerequestCount)) ?? '',
         RETURN_STATUS_LABEL[r.status],
         r.mgmtNo ?? '',
         r.orderNo ?? '',
@@ -195,7 +197,7 @@ export function ReturnsPage() {
     <div className={p.stack}>
       <PageHeader
         title="회수"
-        description={`반품·교환 회수 접수부터 검수까지 관리해요. 접수 후 ${OVERDUE_DAYS}일이 지나도 회수가 안 끝나면 장기 미수로 표시돼요`}
+        description={`반품·교환 회수 접수부터 검수까지 관리해요. ${OVERDUE_ATTEMPT}차 접수까지 했는데 집화가 안 되면 장기 미수로 표시돼요`}
       />
 
       <ReturnInput existing={list} />
@@ -239,15 +241,16 @@ export function ReturnsPage() {
         <div className={s.listToolbar}>
           <p className={p.muted}>
             {filter === 'requested' && '전일까지 접수했는데 회수 송장이 아직 없는 건이에요'}
-            {filter === 'overdue' && `접수 ${OVERDUE_DAYS}일이 지났는데 회수가 끝나지 않은 건이에요 (오래된 순)`}
-            {filter === 'in_transit' && '회수 송장이 나와서 이동 중인 건이에요'}
+            {filter === 'overdue' && `${OVERDUE_ATTEMPT}차 접수까지 했는데 아직 집화되지 않은 건이에요 (오래된 순)`}
+            {filter === 'uncollected' && '회수 송장은 나왔는데 배송조회에 아직 집화처리가 안 잡힌 건이에요'}
+            {filter === 'in_transit' && '송장이 있고 미집화 · 집화출발 · 배송완료가 아닌, 실제로 이동 중인 건이에요'}
             {filter === 'collected' && '도착했어요. 실물 확인 후 검수완료를 눌러주세요'}
             {filter === 'inspected' && '최근 30일 동안 검수완료한 건이에요'}
             {filter === 'today' && '오늘 접수한 건이에요. 회수 송장은 보통 다음날 나와요'}
             {filter === 'all' && '진행 중인 건 전부와 최근 30일 검수완료 건이에요'}
           </p>
           <div style={{ display: 'flex', gap: 6 }}>
-            {(filter === 'in_transit' || filter === 'overdue') && (
+            {(filter === 'in_transit' || filter === 'overdue' || filter === 'uncollected') && (
               <Button
                 size="sm"
                 variant="weak"
@@ -338,7 +341,7 @@ export function ReturnsPage() {
       >
         <p className={s.noticeCount}>{counts.overdue}건</p>
         <p>
-          접수 후 {OVERDUE_DAYS}일이 지났는데 아직 회수되지 않았어요.
+          {OVERDUE_ATTEMPT}차 접수까지 했는데 아직 집화되지 않았어요.
           <br />
           회수를 완료해주세요!
         </p>

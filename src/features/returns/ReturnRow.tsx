@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { CARRIER_LABEL, RETURN_KIND_LABEL, RETURN_STATUS_LABEL, type ReturnItem, type ReturnStatus } from '@/api/types';
+import { CARRIER_LABEL, RETURN_CHANNEL_LABEL, RETURN_KIND_LABEL, RETURN_STATUS_LABEL, returnChannel, type ReturnItem, type ReturnStatus } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
 import { Badge } from '@/components/ui';
-import { carrierTrackingUrl, daysSince, formatTime, isOverdue, isTrackable, STATUS_TONE, trackingTone } from './status';
+import { attemptLabel, attemptOf, carrierTrackingUrl, daysSince, formatTime, isOverdue, isTrackable, isUncollected, STATUS_TONE, trackingTone } from './status';
 import * as s from '@/pages/ReturnsPage.css';
 
 interface ReturnRowProps {
@@ -32,7 +32,7 @@ export function ReturnRow({
 }: ReturnRowProps) {
   const [open, setOpen] = useState(false);
   const days = daysSince(item.receivedOn, todayString);
-  const overdue = isOverdue(item, todayString);
+  const overdue = isOverdue(item);
   const link = item.invoiceNo ? carrierTrackingUrl(item.carrier, item.invoiceNo) : null;
   const t = item.tracking;
 
@@ -50,7 +50,13 @@ export function ReturnRow({
             />
           )}
           {item.recipient}
+          <Badge tone={returnChannel(item) === 'ezadmin' ? 'blue' : 'grey'}>{RETURN_CHANNEL_LABEL[returnChannel(item)]}</Badge>
           <Badge tone={STATUS_TONE[item.status]}>{RETURN_STATUS_LABEL[item.status]}</Badge>
+          {isUncollected(item) && <Badge tone="orange">미집화</Badge>}
+          {item.restocked && <Badge tone="green">양품화</Badge>}
+          {item.rerequestCount > 0 && (
+            <Badge tone={overdue ? 'red' : 'orange'}>{attemptLabel(attemptOf(item.rerequestCount))}</Badge>
+          )}
           {item.kind && (
             <Badge tone={item.kind === 'return' ? 'orange' : 'blue'}>
               {RETURN_KIND_LABEL[item.kind]}
@@ -71,7 +77,11 @@ export function ReturnRow({
           {item.phone && ` · ${item.phone}`}
         </p>
         {item.address && <p className={s.itemMeta}>{item.address}</p>}
-        {item.memo && <p className={s.itemMeta}>메모: {item.memo}</p>}
+        {item.memo && (
+          <p className={s.itemMeta} style={{ whiteSpace: 'pre-line' }}>
+            메모: {item.memo}
+          </p>
+        )}
       </div>
 
       <div className={s.tracking}>

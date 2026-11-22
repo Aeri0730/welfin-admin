@@ -6,7 +6,7 @@ import { Icon } from '@/components/Icon';
 import { Badge, Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
 import { MOVEMENT_TONE, describeRoute } from '@/features/inventory/movement';
-import { safetyStockOf, sumStock, useStockMatrix } from '@/features/inventory/useStockMatrix';
+import { sumStock, useStockMatrix } from '@/features/inventory/useStockMatrix';
 import { cx } from '@/lib/cx';
 import { formatDateLabel, formatNumber, today } from '@/lib/format';
 import * as s from './pages.css';
@@ -37,9 +37,10 @@ export function DashboardPage() {
     value: sumStock(rows.filter((row) => row.product.category === category)).value,
   }));
 
-  const lowStock = rows
-    .filter((row) => row.isLow)
-    .sort((a, b) => a.total / safetyStockOf(a.product) - b.total / safetyStockOf(b.product));
+  // 주요 제품: 기준 정보의 '매출 탭 표시 순서'가 있는 제품 (매출 탭 '주요 제품 재고'와 같은 목록)
+  const featured = rows
+    .filter((row) => row.product.reportOrder !== null)
+    .sort((a, b) => (a.product.reportOrder ?? 0) - (b.product.reportOrder ?? 0));
 
   return (
     <div className={s.stack}>
@@ -124,22 +125,27 @@ export function DashboardPage() {
       <div className={s.twoColumn}>
         <Card>
           <div className={s.sectionHeader}>
-            <h2 className={s.sectionTitle}>안전재고 미달 {lowStock.length > 0 && `${lowStock.length}개`}</h2>
+            <h2 className={s.sectionTitle}>주요 제품 재고</h2>
             <Link to="/stock" className={s.linkText}>
               전체 재고
             </Link>
           </div>
-          {lowStock.length === 0 ? (
-            <EmptyState title="부족한 제품이 없어요" />
+          {featured.length === 0 ? (
+            <EmptyState title="표시할 제품이 없어요" description="기준 정보에서 제품의 '매출 탭 표시 순서'를 정해주세요" />
           ) : (
             <ul>
-              {lowStock.slice(0, 8).map((row) => (
+              {featured.map((row) => (
                 <li key={row.product.id} className={s.listItem}>
                   <div className={s.listMain}>
-                    <p className={s.listTitle}>{row.product.name}</p>
-                    <p className={s.listMeta}>안전재고 {formatNumber(safetyStockOf(row.product))}개</p>
+                    <p className={s.listTitle}>
+                      {row.product.name}
+                      {row.isLow && <Badge tone="red">부족</Badge>}
+                    </p>
+                    <p className={s.listMeta}>
+                      {warehouses.map((w) => `${w.name} ${formatNumber(row.byWarehouse[w.id] ?? 0)}`).join(' · ')}
+                    </p>
                   </div>
-                  <span className={cx(s.listRight, s.minus)}>{formatNumber(row.total)}개</span>
+                  <span className={cx(s.listRight, row.isLow && s.minus)}>{formatNumber(row.total)}개</span>
                 </li>
               ))}
             </ul>

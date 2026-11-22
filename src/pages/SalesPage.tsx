@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   useDailySales,
   useMovements,
+  useSalesActuals,
+  useSalesExtras,
   useSalesTargets,
   useSaveDailySales,
+  useSaveSalesActual,
+  useSaveSalesExtras,
   useSaveSalesTarget,
 } from '@/api/queries';
-import type { Warehouse } from '@/api/types';
+import type { SalesExtra, Warehouse } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
 import { TextField } from '@/components/Field';
@@ -58,17 +62,33 @@ export function SalesPage() {
   const warehouses = current.warehouses;
   const salesFrom = addDays(date, -3);
   const monthSales = useDailySales(monthStart < salesFrom ? monthStart : salesFrom, date);
+  const monthExtras = useSalesExtras(monthStart < salesFrom ? monthStart : salesFrom, date);
+  const extraRows = monthExtras.data ?? [];
+
+  // 월 실적(ACTUAL)은 날마다 직접 입력. 기준일까지 가장 최근 입력값을 쓴다
+  const actuals = useSalesActuals(monthStart, date);
+  const latestActual = (actuals.data ?? []).filter((row) => row.actualOn <= date).at(-1) ?? null;
+  const todayActual = latestActual?.actualOn === date ? latestActual : null;
+
+  /** 그날 창고 밖 매출 (양일상사 · 유니맥스 등) 합계 */
+  const extraOf = (day: string) =>
+    extraRows
+      .filter((row) => row.salesOn === day)
+      .reduce((acc, row) => ({ amount: acc.amount + row.amount, quantity: acc.quantity + row.quantity }), { amount: 0, quantity: 0 });
+  const extraNames = (day: string) => [...new Set(extraRows.filter((row) => row.salesOn === day).map((row) => row.name))];
   const targets = useSalesTargets();
   const movements = useMovements({ from: prevDate, to: date });
 
   const [targetOpen, setTargetOpen] = useState(false);
 
-  /** 기준일 day 의 창고별 매출 (쿠팡 RG 는 전날 판매분). warehouseId 가 없으면 전 창고 합계 */
+  /** 기준일 day 의 창고별 매출 (쿠팡 RG 는 전날 판매분). warehouseId 가 없으면 전 창고 + 창고 밖 매출 합계 */
   const salesOf = (day: string, warehouseId?: number) =>
-    warehouses
-      .filter((w) => warehouseId === undefined || w.id === warehouseId)
-      .flatMap((w) => (monthSales.data ?? []).filter((row) => row.warehouseId === w.id && row.salesOn === salesDayOf(day, w)))
-      .reduce((acc, row) => ({ amount: acc.amount + row.amount, quantity: acc.quantity + row.quantity }), { amount: 0, quantity: 0 });
+    [
+      ...(warehouseId === undefined ? [extraOf(day)] : []),
+      ...warehouses
+        .filter((w) => warehouseId === undefined || w.id === warehouseId)
+        .flatMap((w) => (monthSales.data ?? []).filter((row) => row.warehouseId === w.id && row.salesOn === salesDayOf(day, w))),
+    ].reduce((acc, row) => ({ amount: acc.amount + row.amount, quantity: acc.quantity + row.quantity }), { amount: 0, quantity: 0 });
 
   const salesLabel = (w: Warehouse, day: string) =>
     SALES_LAG_DAYS[w.code] ? `${w.name} (${shortDate(salesDayOf(day, w))} 판매)` : w.name;
@@ -82,18 +102,27 @@ export function SalesPage() {
       })
       .reduce((sum, m) => sum + m.quantity, 0);
 
-  const monthActual = (monthSales.data ?? [])
-    .filter((row) => row.salesOn >= monthStart && row.salesOn <= date)
-    .reduce((sum, row) => sum + row.amount, 0);
+  const inMonth = (row: { salesOn: string }) => row.salesOn >= monthStart && row.salesOn <= date;
+  const monthActual =
+    (monthSales.data ?? []).filter(inMonth).reduce((sum, row) => sum + row.amount, 0) +
+    extraRows.filter(inMonth).reduce((sum, row) => sum + row.amount, 0);
+  const showExtra = extraRows.some((row) => row.salesOn === date || row.salesOn === prevDate);
+  const extraLabel = `기타${extraNames(date).length ? ` (${extraNames(date).join(', ')})` : ''}`;
   const monthTarget = targets.data?.find((t) => t.period === monthKey)?.amount ?? 0;
   const yearTarget = targets.data?.find((t) => t.period === yearKey)?.amount ?? 0;
-  const achieved = monthTarget > 0 ? (monthActual / monthTarget) * 100 : 0;
+  const achieved = monthTarget > 0 && latestActual ? (latestActual.amount / monthTarget) * 100 : 0;
 
   /* ---------- 일일 비교표 ---------- */
-  type Metric = { label: string; value: (day: string, warehouseId?: number) => number; unit: string };
+  type Metric = {
+    label: string;
+    value: (day: string, warehouseId?: number) => number;
+    unit: string;
+    /** 창고 밖 매출 칸 값 (없으면 '-') */
+    extra?: (day: string) => number;
+  };
   const metrics: Metric[] = [
-    { label: '매출액', value: (day, wh) => salesOf(day, wh).amount, unit: '원' },
-    { label: '판매수량', value: (day, wh) => salesOf(day, wh).quantity, unit: '개' },
+    { label: '매출액', value: (day, wh) => salesOf(day, wh).amount, unit: '원', extra: (day) => extraOf(day).amount },
+    { label: '판매수량', value: (day, wh) => salesOf(day, wh).quantity, unit: '개', extra: (day) => extraOf(day).quantity },
     { label: '입고수량', value: (day, wh) => movedOf(day, 'inbound', wh), unit: '개' },
     { label: '출고수량', value: (day, wh) => movedOf(day, 'outbound', wh), unit: '개' },
     {
@@ -114,7 +143,7 @@ export function SalesPage() {
   const series: ChartSeries[] = warehouses.map((w, i) => ({ name: w.name, color: WAREHOUSE_COLORS[i % WAREHOUSE_COLORS.length] }));
 
   const loading = current.isLoading || monthSales.isLoading;
-  const error = current.error ?? previous.error ?? monthSales.error ?? targets.error ?? movements.error;
+  const error = current.error ?? previous.error ?? monthSales.error ?? monthExtras.error ?? actuals.error ?? targets.error ?? movements.error;
 
   return (
     <div className={p.stack}>
@@ -157,11 +186,14 @@ export function SalesPage() {
           </div>
           <div>
             <p className={p.statMini}>{Number(monthKey.slice(5))}월 실적 (ACTUAL)</p>
-            <p className={p.statMiniValue}>{formatNumber(monthActual)}원</p>
+            <p className={p.statMiniValue}>{latestActual ? `${formatNumber(latestActual.amount)}원` : '미입력'}</p>
+            {latestActual && latestActual.actualOn !== date && (
+              <p className={p.muted}>{shortDate(latestActual.actualOn)} 입력값</p>
+            )}
           </div>
           <div>
             <p className={p.statMini}>달성률</p>
-            <p className={cx(p.statMiniValue, p.plus)}>{monthTarget ? `${achieved.toFixed(0)}%` : '-'}</p>
+            <p className={cx(p.statMiniValue, p.plus)}>{monthTarget && latestActual ? `${achieved.toFixed(0)}%` : '-'}</p>
           </div>
         </div>
         {monthTarget > 0 && (
@@ -169,9 +201,23 @@ export function SalesPage() {
             <div className={s.progressBar} style={{ width: `${Math.min(100, achieved)}%` }} />
           </div>
         )}
+        <ActualInput
+          key={`${date}:${todayActual?.amount ?? ''}`}
+          date={date}
+          saved={todayActual?.amount ?? null}
+          computed={monthActual}
+          loading={actuals.isLoading}
+        />
       </Card>
 
-      <SalesInput key={date} date={date} warehouses={warehouses} rows={monthSales.data ?? []} />
+      <SalesInput
+        key={date}
+        date={date}
+        warehouses={warehouses}
+        rows={monthSales.data ?? []}
+        extras={extraRows.filter((row) => row.salesOn === date)}
+        extrasLoaded={!monthExtras.isLoading}
+      />
 
       {/* 판매 매출 보고 */}
       <Card title="판매 매출 보고">
@@ -188,6 +234,7 @@ export function SalesPage() {
                       {salesLabel(w, date)}
                     </th>
                   ))}
+                  {showExtra && <th className={cx(p.th, p.num)}>{extraLabel}</th>}
                   <th className={cx(p.th, p.num)}>금일 합계</th>
                   <th className={cx(p.th, p.num)}>전일 합계</th>
                   <th className={cx(p.th, p.num)}>증감</th>
@@ -206,6 +253,9 @@ export function SalesPage() {
                           {formatNumber(metric.value(date, w.id))}
                         </td>
                       ))}
+                      {showExtra && (
+                        <td className={cx(p.td, p.num)}>{metric.extra ? formatNumber(metric.extra(date)) : '-'}</td>
+                      )}
                       <td className={cx(p.td, p.num, p.strong)}>
                         {formatNumber(todayTotal)}
                         {metric.unit}
@@ -232,10 +282,13 @@ export function SalesPage() {
             { name: `금일 (${date.slice(5)})`, color: WAREHOUSE_COLORS[0] },
             { name: `전일 (${prevDate.slice(5)})`, color: '#B0B8C1' },
           ]}
-          rows={warehouses.map((w) => ({
-            label: SALES_LAG_DAYS[w.code] ? `${w.name} (하루 전 판매)` : w.name,
-            values: [salesOf(date, w.id).amount, salesOf(prevDate, w.id).amount],
-          }))}
+          rows={[
+            ...warehouses.map((w) => ({
+              label: SALES_LAG_DAYS[w.code] ? `${w.name} (하루 전 판매)` : w.name,
+              values: [salesOf(date, w.id).amount, salesOf(prevDate, w.id).amount],
+            })),
+            ...(showExtra ? [{ label: '기타', values: [extraOf(date).amount, extraOf(prevDate).amount] }] : []),
+          ]}
         />
       </Card>
 
@@ -296,12 +349,49 @@ interface SalesInputProps {
   date: string;
   warehouses: Warehouse[];
   rows: Array<{ salesOn: string; warehouseId: number; amount: number; quantity: number; memo: string | null }>;
+  /** 그날 창고 밖 매출 (양일상사 · 유니맥스 등) */
+  extras: SalesExtra[];
+  extrasLoaded: boolean;
 }
 
-function SalesInput({ date, warehouses, rows }: SalesInputProps) {
+interface ExtraDraft {
+  key: number;
+  name: string;
+  amount: string;
+  quantity: string;
+}
+
+let extraKey = 0;
+const toExtraDraft = (row: SalesExtra): ExtraDraft => ({
+  key: ++extraKey,
+  name: row.name,
+  amount: String(row.amount),
+  quantity: String(row.quantity),
+});
+const blankExtra = (): ExtraDraft => ({ key: ++extraKey, name: '', amount: '', quantity: '' });
+
+function SalesInput({ date, warehouses, rows, extras, extrasLoaded }: SalesInputProps) {
   const toast = useToast();
   const save = useSaveDailySales();
+  const saveExtras = useSaveSalesExtras();
   const [draft, setDraft] = useState<Record<number, { amount: string; quantity: string }>>({});
+  const [extraDraft, setExtraDraft] = useState<ExtraDraft[] | null>(null);
+  const [extraError, setExtraError] = useState<string | null>(null);
+
+  // 저장된 창고 밖 매출을 불러오면 한 번만 채운다
+  useEffect(() => {
+    if (extrasLoaded && extraDraft === null) setExtraDraft(extras.map(toExtraDraft));
+  }, [extrasLoaded, extras, extraDraft]);
+  const extraList = extraDraft ?? [];
+
+  const updateExtra = (key: number, field: 'name' | 'amount' | 'quantity', value: string) =>
+    setExtraDraft((prev) =>
+      (prev ?? []).map((row) =>
+        row.key === key ? { ...row, [field]: field === 'name' ? value.slice(0, 40) : onlyDigits(value) } : row,
+      ),
+    );
+  const removeExtra = (key: number) => setExtraDraft((prev) => (prev ?? []).filter((row) => row.key !== key));
+  const addExtra = () => setExtraDraft((prev) => [...(prev ?? []), blankExtra()]);
 
   // 저장된 값이 불러와지면 입력칸에 채운다 (사용자가 아직 안 건드린 칸만)
   useEffect(() => {
@@ -322,19 +412,43 @@ function SalesInput({ date, warehouses, rows }: SalesInputProps) {
       [warehouseId]: { ...(prev[warehouseId] ?? { amount: '', quantity: '' }), [field]: onlyDigits(value) },
     }));
 
-  const hasSaved = warehouses.some((w) => rows.some((r) => r.warehouseId === w.id && r.salesOn === salesDayOf(date, w)));
+  const hasSaved =
+    extras.length > 0 || warehouses.some((w) => rows.some((r) => r.warehouseId === w.id && r.salesOn === salesDayOf(date, w)));
 
-  const handleSave = () => {
-    save.mutate(
-      warehouses.map((w) => ({
-        salesOn: salesDayOf(date, w),
-        warehouseId: w.id,
-        amount: Number(draft[w.id]?.amount || 0),
-        quantity: Number(draft[w.id]?.quantity || 0),
-        memo: null,
-      })),
-      { onSuccess: () => toast(`${formatDateLabel(date)} 매출을 저장했어요`) },
-    );
+  const handleSave = async () => {
+    // 이름도 숫자도 없는 빈 줄은 무시, 숫자만 있고 이름이 없으면 막는다
+    const filled = extraList.filter((row) => row.name.trim() || row.amount || row.quantity);
+    if (filled.some((row) => !row.name.trim())) {
+      setExtraError('추가한 매출의 창고 · 업체명을 적어주세요');
+      return;
+    }
+    setExtraError(null);
+    try {
+      await save.mutateAsync(
+        warehouses.map((w) => ({
+          salesOn: salesDayOf(date, w),
+          warehouseId: w.id,
+          amount: Number(draft[w.id]?.amount || 0),
+          quantity: Number(draft[w.id]?.quantity || 0),
+          memo: null,
+        })),
+      );
+      if (extraDraft !== null) {
+        await saveExtras.mutateAsync({
+          date,
+          rows: filled.map((row) => ({
+            salesOn: date,
+            name: row.name.trim(),
+            amount: Number(row.amount || 0),
+            quantity: Number(row.quantity || 0),
+          })),
+        });
+        setExtraDraft(filled);
+      }
+      toast(`${formatDateLabel(date)} 매출을 저장했어요`);
+    } catch {
+      // ErrorBox 로 보여준다
+    }
   };
 
   return (
@@ -362,18 +476,93 @@ function SalesInput({ date, warehouses, rows }: SalesInputProps) {
             />
           </div>
         ))}
+
+        {extraList.map((row) => (
+          <div key={row.key} className={s.extraGrid}>
+            <TextField
+              label="창고 · 업체명"
+              placeholder="예: 양일상사"
+              value={row.name}
+              onChange={(e) => updateExtra(row.key, 'name', e.target.value)}
+            />
+            <TextField
+              label="매출액(원)"
+              inputMode="numeric"
+              placeholder="0"
+              value={formatInput(row.amount)}
+              onChange={(e) => updateExtra(row.key, 'amount', e.target.value)}
+            />
+            <TextField
+              label="판매수량(개)"
+              inputMode="numeric"
+              placeholder="0"
+              value={formatInput(row.quantity)}
+              onChange={(e) => updateExtra(row.key, 'quantity', e.target.value)}
+            />
+            <button type="button" className={s.extraRemove} onClick={() => removeExtra(row.key)} aria-label="이 매출 줄 빼기">
+              ×
+            </button>
+          </div>
+        ))}
+
+        <button type="button" className={s.extraAdd} onClick={addExtra} disabled={!extrasLoaded}>
+          + 추가
+        </button>
       </div>
-      {save.error && (
+      {(extraError || save.error || saveExtras.error) && (
         <div style={{ marginTop: 12 }}>
-          <ErrorBox error={save.error} />
+          <ErrorBox error={extraError ? new Error(extraError) : (save.error ?? saveExtras.error)} />
         </div>
       )}
       <div className={s.inputActions}>
-        <Button onClick={handleSave} loading={save.isPending}>
+        <Button onClick={handleSave} loading={save.isPending || saveExtras.isPending}>
           {hasSaved ? '수정 저장' : '저장'}
         </Button>
       </div>
     </Card>
+  );
+}
+
+/* ---------- 월 실적 입력 ---------- */
+
+interface ActualInputProps {
+  date: string;
+  /** 그날 저장된 실적 (없으면 null) */
+  saved: number | null;
+  /** 참고용: 이번 달 1일 ~ 기준일 창고별 입력 매출 합계 */
+  computed: number;
+  loading: boolean;
+}
+
+function ActualInput({ date, saved, computed, loading }: ActualInputProps) {
+  const toast = useToast();
+  const save = useSaveSalesActual();
+  const [text, setText] = useState(saved !== null ? String(saved) : '');
+  const next = text ? Number(text) : null;
+  const changed = next !== saved;
+
+  const handleSave = () =>
+    save.mutate(
+      { date, amount: next },
+      { onSuccess: () => toast(next === null ? `${shortDate(date)} 실적을 지웠어요` : `${shortDate(date)} 실적을 저장했어요`) },
+    );
+
+  return (
+    <div className={s.actualRow}>
+      <TextField
+        label={`${shortDate(date)} 기준 ${Number(date.slice(5, 7))}월 실적 (ACTUAL)`}
+        inputMode="numeric"
+        placeholder="이번 달 1일부터의 실적(원)"
+        hint={`참고: 이번 달 입력한 매출 합계 ${formatNumber(computed)}원`}
+        value={formatInput(text)}
+        onChange={(e) => setText(onlyDigits(e.target.value))}
+        containerClassName={s.actualField}
+      />
+      <Button onClick={handleSave} loading={save.isPending} disabled={loading || !changed}>
+        {saved !== null ? '수정 저장' : '저장'}
+      </Button>
+      {save.error && <ErrorBox error={save.error} />}
+    </div>
   );
 }
 

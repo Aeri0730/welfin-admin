@@ -13,6 +13,9 @@ function toError(error: { message: string; code?: string }): Error {
   if (error.code === '23505') return new Error('이미 등록된 관리번호가 있어요');
   if (error.code === '42501') return new Error('권한이 없어요. 관리자에게 문의해주세요');
   if (error.code === '42P01') return new Error('회수 테이블이 없어요. supabase/migrations/0003_returns.sql 을 먼저 실행해주세요');
+  if (error.code === '42703' && /rerequest_count|restocked/.test(error.message)) {
+    return new Error('재접수·양품화 칸이 없어요. supabase/migrations/0005_returns_rerequest.sql 을 먼저 실행해주세요');
+  }
   return new Error(error.message);
 }
 
@@ -21,7 +24,7 @@ const COLUMNS = `
   recipient, phone, address, product_text, sku, quantity, kind, reason,
   carrier, invoice_no, status, collected_at, inspected_at,
   tracking_code, tracking_label, tracking_location, tracking_time, tracking_events,
-  tracking_checked_at, tracking_error, memo, created_at
+  tracking_checked_at, tracking_error, memo, rerequest_count, restocked, restocked_at, created_at
 `;
 
 interface ReturnRow {
@@ -53,6 +56,9 @@ interface ReturnRow {
   tracking_checked_at: string | null;
   tracking_error: string | null;
   memo: string | null;
+  rerequest_count: number | null;
+  restocked: boolean | null;
+  restocked_at: string | null;
   created_at: string;
 }
 
@@ -88,6 +94,9 @@ function mapRow(row: ReturnRow): ReturnItem {
       error: row.tracking_error,
     },
     memo: row.memo,
+    rerequestCount: row.rerequest_count ?? 0,
+    restocked: Boolean(row.restocked),
+    restockedAt: row.restocked_at,
     createdAt: row.created_at,
   };
 }
@@ -148,6 +157,11 @@ async function toColumns(current: Pick<ReturnItem, 'status' | 'invoiceNo'>, patc
   if (patch.reason !== undefined) columns.reason = patch.reason;
   if (patch.carrier !== undefined) columns.carrier = patch.carrier;
   if (patch.memo !== undefined) columns.memo = patch.memo;
+  if (patch.rerequestCount !== undefined) columns.rerequest_count = patch.rerequestCount;
+  if (patch.restocked !== undefined) {
+    columns.restocked = patch.restocked;
+    columns.restocked_at = patch.restocked ? new Date().toISOString() : null;
+  }
 
   let nextStatus = patch.status;
 

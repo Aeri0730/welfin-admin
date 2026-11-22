@@ -1,4 +1,4 @@
-import { style } from '@vanilla-extract/css';
+import { globalStyle, style } from '@vanilla-extract/css';
 import { media, vars } from '@/styles/theme.css';
 
 export const dateBar = style({
@@ -8,14 +8,30 @@ export const dateBar = style({
   flexWrap: 'wrap',
 });
 
+// 목표 대비 실적: 항목을 한 줄로 가로 나열 (좁은 화면에서는 옆으로 스크롤)
 export const targetGrid = style({
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 16,
-  '@media': {
-    [media.desktop]: { gridTemplateColumns: 'repeat(4, 1fr)' },
-  },
+  display: 'flex',
+  gap: 24,
+  overflowX: 'auto',
+  whiteSpace: 'nowrap',
 });
+
+// vanilla-extract 는 style() 안에서 자식 선택자를 못 써서 globalStyle 로 지정
+globalStyle(`${targetGrid} > div`, { flex: '1 0 auto', minWidth: 0 });
+globalStyle(`${targetGrid} > div + div`, { paddingLeft: 24, borderLeft: `1px solid ${vars.color.grey100}` });
+
+/** 월 실적 입력 줄 */
+export const actualRow = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 8,
+  marginTop: 16,
+  paddingTop: 16,
+  borderTop: `1px solid ${vars.color.grey100}`,
+});
+
+export const actualField = style({ flex: '1 1 240px', maxWidth: 360 });
 
 export const progress = style({
   height: 8,
@@ -86,3 +102,55 @@ export const inputSub = style({
   fontWeight: 500,
   color: vars.color.grey500,
 });
+
+/* 창고 밖 매출 (+ 버튼) */
+export const extraGrid = style({
+  display: 'grid',
+  gap: 12,
+  gridTemplateColumns: '1fr 1fr 40px',
+  alignItems: 'end',
+  paddingTop: 12,
+  borderTop: `1px dashed ${vars.color.grey200}`,
+  '@media': {
+    [media.tablet]: { gridTemplateColumns: '120px 1fr 1fr 40px' },
+  },
+});
+
+globalStyle(`${extraGrid} > :first-child`, {
+  gridColumn: '1 / -1',
+  '@media': { [media.tablet]: { gridColumn: 'auto' } },
+});
+
+export const extraRemove = style({
+  width: 40,
+  height: 44,
+  border: 0,
+  borderRadius: vars.radius.sm,
+  background: vars.color.grey100,
+  fontSize: 20,
+  color: vars.color.grey600,
+  cursor: 'pointer',
+  selectors: { '&:hover': { background: vars.color.grey200 } },
+});
+
+export const extraAdd = style({
+  alignSelf: 'flex-start',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  height: 40,
+  padding: '0 14px',
+  border: `1px dashed ${vars.color.grey300}`,
+  borderRadius: vars.radius.sm,
+  background: 'none',
+  fontSize: 14,
+  fontWeight: 600,
+  color: vars.color.blue500,
+  cursor: 'pointer',
+  selectors: {
+    '&:hover': { background: vars.color.grey50 },
+    '&:disabled': { opacity: 0.5, cursor: 'default' },
+  },
+});
+
+export const extraAddSub = style({ fontSize: 12, fontWeight: 500, color: vars.color.grey500 });

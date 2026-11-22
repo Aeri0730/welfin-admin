@@ -15,6 +15,7 @@ const paths = {
   refresh: 'M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5',
   edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
   chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  wallet: 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l3-3h11M16 13.5h2',
   swap: 'M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7',
 } as const;
 

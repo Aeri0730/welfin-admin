@@ -10,6 +10,10 @@ import { ReturnsPage } from '@/pages/ReturnsPage';
 import { SalesPage } from '@/pages/SalesPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { StockPage } from '@/pages/StockPage';
+import { StoragePage } from '@/pages/StoragePage';
+import { StorageDayPage } from '@/pages/StorageDayPage';
+import { SettlementPage } from '@/pages/SettlementPage';
+import { DispatchPage } from '@/pages/DispatchPage';
 
 export function App() {
   useSyncSession();
@@ -22,9 +26,14 @@ export function App() {
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="stock" element={<StockPage />} />
+            <Route path="stock/storage" element={<StoragePage />} />
+            <Route path="stock/storage/:date" element={<StorageDayPage />} />
             <Route path="inbound" element={<MovementPage key="inbound" type="inbound" />} />
             <Route path="outbound" element={<MovementPage key="outbound" type="outbound" />} />
             <Route path="sales" element={<SalesPage />} />
+            <Route path="settlement" element={<SettlementPage key="receivable" kind="receivable" />} />
+            <Route path="settlement/consign" element={<SettlementPage key="consign" kind="consign" />} />
+            <Route path="settlement/dispatch" element={<DispatchPage />} />
             <Route path="returns" element={<ReturnsPage />} />
             <Route path="transfer" element={<MovementPage key="transfer" type="transfer" />} />
             <Route path="history" element={<HistoryPage />} />

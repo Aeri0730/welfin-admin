@@ -249,7 +249,39 @@ export type PlanRow =
   | { status: 'create'; lineNo: number; raw: string; input: NewReturnInput; warning?: string }
   | { status: 'update'; lineNo: number; raw: string; target: ReturnItem; label: string; patch: ReturnPatch; warning?: string }
   | { status: 'skip'; lineNo: number; raw: string; message: string }
-  | { status: 'error'; lineNo: number; raw: string; message: string };
+  | { status: 'error'; lineNo: number; raw: string; message: string }
+  /**
+   * 이름·주소가 같은 진행 중인 건이 이미 있음 → 사용자에게 물어본다.
+   * new: 새로 접수 / rerequest: 기존 건에 재접수(2차) / n차 접수로 기록 / null: 아직 안 고름
+   */
+  | {
+      status: 'duplicate';
+      lineNo: number;
+      raw: string;
+      input: NewReturnInput;
+      target: ReturnItem;
+      choice: 'new' | 'rerequest' | null;
+      warning?: string;
+    };
+
+/** 주소 비교용: 띄어쓰기·쉼표·괄호 차이는 무시 */
+export const normalizeAddress = (value: string | null) => (value ?? '').replace(/[\s,()\-]/g, '').toLowerCase();
+
+/** 재접수로 고른 중복 줄을 기존 건 수정 내용으로 바꾼다 */
+export function rerequestPatch(row: Extract<PlanRow, { status: 'duplicate' }>): ReturnPatch {
+  const next = row.target.rerequestCount + 1;
+  // 2차 = 재접수, 3차부터 n차 접수
+  const note = `${next === 1 ? '재접수' : `${next + 1}차 접수`} (${row.input.receivedOn})`;
+  const patch: ReturnPatch = {
+    rerequestCount: next,
+    memo: row.target.memo ? `${row.target.memo}\n${note}` : note,
+  };
+  if (row.input.kind) {
+    patch.kind = row.input.kind;
+    patch.reason = row.input.reason;
+  }
+  return patch;
+}
 
 export interface PasteOptions {
   mode: InputMode;
@@ -267,7 +299,7 @@ export function planPaste(text: string, options: PasteOptions): PlanRow[] {
   const active = existing.filter((r) => r.status !== 'inspected');
   const byMgmt = new Map(existing.filter((r) => r.mgmtNo).map((r) => [r.mgmtNo as string, r]));
   /** 같은 붙여넣기 안에서 새로 접수되는 건 (반품/교환 구분을 바로 붙이기 위해) */
-  const pending: Array<Extract<PlanRow, { status: 'create' }>> = [];
+  const pending: Array<Extract<PlanRow, { status: 'create' | 'duplicate' }>> = [];
   /** 같은 건에 대한 여러 줄의 변경을 하나로 합친다 */
   const updates = new Map<number, Extract<PlanRow, { status: 'update' }>>();
 
@@ -335,12 +367,7 @@ export function planPaste(text: string, options: PasteOptions): PlanRow[] {
           rows.push({ status: 'skip', lineNo, raw, message: '같은 날 같은 이름·연락처로 이미 접수돼 있어요' });
           return;
         }
-        const row = {
-          status: 'create' as const,
-          lineNo,
-          raw,
-          warning: parsed.warning,
-          input: {
+        const input: NewReturnInput = {
             receivedOn,
             sourceFormat: 2 as const,
             mgmtNo: null,
@@ -355,8 +382,26 @@ export function planPaste(text: string, options: PasteOptions): PlanRow[] {
             quantity: parsed.quantity,
             kind: null,
             reason: null,
-          },
         };
+        // 이름·주소가 같은 진행 중인 건이 있으면 새 접수인지 재접수인지 물어본다
+        const address = normalizeAddress(parsed.address);
+        const same = address
+          ? existing.filter(
+              (r) =>
+                (r.status === 'requested' || r.status === 'in_transit') &&
+                r.recipient === parsed.recipient &&
+                normalizeAddress(r.address) === address,
+            )
+          : [];
+        if (same.length > 0) {
+          // 여러 건이면 가장 최근에 접수한 건
+          const target = same.reduce((a, b) => (b.receivedOn > a.receivedOn || (b.receivedOn === a.receivedOn && b.id > a.id) ? b : a));
+          const row = { status: 'duplicate' as const, lineNo, raw, input, target, choice: null, warning: parsed.warning };
+          pending.push(row);
+          rows.push(row);
+          return;
+        }
+        const row = { status: 'create' as const, lineNo, raw, warning: parsed.warning, input };
         pending.push(row);
         rows.push(row);
         return;

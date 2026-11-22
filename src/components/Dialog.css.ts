@@ -47,6 +47,15 @@ export const title = style({
   color: vars.color.grey900,
 });
 
+export const header = style({
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 12,
+});
+
+export const headerAction = style({ flexShrink: 0 });
+
 export const body = style({
   marginTop: 8,
   fontSize: 15,

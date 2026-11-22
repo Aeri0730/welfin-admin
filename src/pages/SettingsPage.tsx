@@ -108,7 +108,7 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
               value={unitCost ? formatNumber(Number(unitCost)) : ''}
               onChange={(e) => setUnitCost(e.target.value.replace(/\D/g, '').slice(0, 9))}
             />
-            <SelectField label="구분" value={category} onChange={(e) => setCategory(e.target.value as ProductCategory)}>
+            <SelectField label="사용 계절" value={category} onChange={(e) => setCategory(e.target.value as ProductCategory)}>
               {(Object.keys(PRODUCT_CATEGORY_LABEL) as ProductCategory[]).map((key) => (
                 <option key={key} value={key}>
                   {PRODUCT_CATEGORY_LABEL[key]}

@@ -62,6 +62,30 @@ export const navLink = style({
   },
 });
 
+export const subNav = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  margin: '2px 0 6px 32px',
+  paddingLeft: 10,
+  borderLeft: `2px solid ${vars.color.grey100}`,
+});
+
+export const subNavLink = style({
+  display: 'flex',
+  alignItems: 'center',
+  height: 34,
+  padding: '0 10px',
+  borderRadius: vars.radius.sm,
+  fontSize: 14,
+  fontWeight: 600,
+  color: vars.color.grey500,
+  selectors: {
+    '&:hover': { background: vars.color.grey50, color: vars.color.grey800 },
+    '&.active': { color: vars.color.blue600, background: vars.color.blue50 },
+  },
+});
+
 export const userBox = style({
   marginTop: 'auto',
   display: 'flex',

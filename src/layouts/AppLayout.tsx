@@ -13,12 +13,32 @@ interface NavItem {
   to: string;
   label: string;
   icon: IconName;
+  /** 사이드바에서 이 메뉴 아래에 펼쳐지는 하위 메뉴 (해당 경로에 있을 때만 보임) */
+  children?: Array<{ to: string; label: string }>;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: '홈', icon: 'home' },
-  { to: '/stock', label: '재고 현황', icon: 'box' },
+  {
+    to: '/stock',
+    label: '재고',
+    icon: 'box',
+    children: [
+      { to: '/stock', label: '재고현황' },
+      { to: '/stock/storage', label: '보관비' },
+    ],
+  },
   { to: '/sales', label: '매출', icon: 'chart' },
+  {
+    to: '/settlement',
+    label: '정산',
+    icon: 'wallet',
+    children: [
+      { to: '/settlement', label: '판매처 대금 수령' },
+      { to: '/settlement/consign', label: '거래처 입금 일정' },
+      { to: '/settlement/dispatch', label: '배차비' },
+    ],
+  },
   { to: '/inbound', label: '입고', icon: 'inbound' },
   { to: '/outbound', label: '출고', icon: 'outbound' },
   { to: '/returns', label: '회수', icon: 'return' },
@@ -26,6 +46,13 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/history', label: '입출고 내역', icon: 'list' },
   { to: '/settings', label: '기준 정보', icon: 'settings' },
 ];
+
+/** 모바일 '전체' 메뉴: 하위 메뉴를 한 줄씩 펼쳐서 보여준다 */
+const SHEET_ITEMS: NavItem[] = NAV_ITEMS.flatMap((item) =>
+  item.children
+    ? item.children.map((child) => ({ to: child.to, label: child.label === '재고현황' ? '재고 현황' : child.label, icon: item.icon }))
+    : [item],
+);
 
 interface TabItem extends NavItem {
   /** 이 경로들에 있을 때도 탭을 활성으로 표시 */
@@ -63,10 +90,21 @@ export function AppLayout() {
         </p>
         <nav className={styles.navList}>
           {NAV_ITEMS.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={styles.navLink}>
-              <Icon name={item.icon} size={20} />
-              {item.label}
-            </NavLink>
+            <div key={item.to}>
+              <NavLink to={item.to} end={item.to === '/'} className={styles.navLink}>
+                <Icon name={item.icon} size={20} />
+                {item.label}
+              </NavLink>
+              {item.children && location.pathname.startsWith(item.to) && (
+                <div className={styles.subNav}>
+                  {item.children.map((child) => (
+                    <NavLink key={child.to} to={child.to} end={child.to === item.to} className={styles.subNavLink}>
+                      {child.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </nav>
         <div className={styles.userBox}>
@@ -125,8 +163,8 @@ export function AppLayout() {
               </Button>
             </div>
             <nav className={styles.navList}>
-              {NAV_ITEMS.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.to === '/'} className={styles.navLink}>
+              {SHEET_ITEMS.map((item) => (
+                <NavLink key={item.to} to={item.to} end className={styles.navLink}>
                   <Icon name={item.icon} size={20} />
                   {item.label}
                 </NavLink>

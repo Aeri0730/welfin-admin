@@ -349,3 +349,25 @@ export const banner = style({
   fontSize: 14,
   fontWeight: 500,
 });
+
+/* 중복 접수 확인 (새로 추가 / 재접수) */
+export const dupNotice = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginTop: 10,
+  padding: '10px 12px',
+  borderRadius: 10,
+  background: vars.color.orange50,
+  fontSize: 13,
+  color: vars.color.grey700,
+});
+
+export const dupChoices = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  marginTop: 4,
+});

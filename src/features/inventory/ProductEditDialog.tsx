@@ -75,7 +75,7 @@ export function ProductEditDialog({ product, onClose }: { product: Product; onCl
           value={safetyStock ? formatNumber(Number(safetyStock)) : ''}
           onChange={(e) => setSafetyStock(digitsOnly(e.target.value, 7))}
         />
-        <SelectField label="구분" value={category} onChange={(e) => setCategory(e.target.value as ProductCategory)}>
+        <SelectField label="사용 계절" value={category} onChange={(e) => setCategory(e.target.value as ProductCategory)}>
           {(Object.keys(PRODUCT_CATEGORY_LABEL) as ProductCategory[]).map((key) => (
             <option key={key} value={key}>
               {PRODUCT_CATEGORY_LABEL[key]}
