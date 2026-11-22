@@ -1,0 +1,15 @@
+{
+  // Vercel 서버 함수(api/*.ts) 전용 설정.
+  // 루트 tsconfig 는 화면용이라 types: ["vite/client"] 가 있어서 함수 빌드에서 TS2688 이 난다.
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": [],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["./**/*.ts"]
+}
