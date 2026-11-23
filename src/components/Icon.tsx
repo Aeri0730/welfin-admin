@@ -17,6 +17,9 @@ const paths = {
   chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   wallet: 'M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l3-3h11M16 13.5h2',
   swap: 'M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7',
+  info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 7.5h.01',
+  check: 'M5 12.5 10 17.5 19 7',
+  chevronDown: 'm6 9 6 6 6-6',
 } as const;
 
 export type IconName = keyof typeof paths;

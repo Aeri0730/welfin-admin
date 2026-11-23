@@ -1,31 +1,49 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProducts, useRefreshTracking, useReturns, useUpdateReturns } from '@/api/queries';
-import { RETURN_CHANNEL_LABEL, RETURN_STATUS_LABEL, returnChannel, type ReturnItem, type ReturnStatus } from '@/api/types';
+import {
+  returnChannelLabel,
+  RETURN_STATUS_LABEL,
+  type ReturnItem,
+  type ReturnStatus,
+} from '@/api/types';
 import { Button } from '@/components/Button';
 import { TextField } from '@/components/Field';
 import { Dialog } from '@/components/Dialog';
 import { Icon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
+import { Dropdown, type DropdownOption } from '@/components/Dropdown';
 import { ReturnEditDialog } from '@/features/returns/ReturnEditDialog';
 import { ReturnInput } from '@/features/returns/ReturnInput';
 import { ReturnRow } from '@/features/returns/ReturnRow';
-import { FILTERS, isTrackable, matchesFilter, matchesSearch, OVERDUE_ATTEMPT, attemptLabel, attemptOf, type ReturnFilter } from '@/features/returns/status';
+import { CHANNEL_GROUP_LABEL, FILTERS, sortByChannel, type ChannelGroup, isTrackable, matchesFilter, matchesSearch, OVERDUE_ATTEMPT, attemptLabel, attemptOf, type ReturnFilter } from '@/features/returns/status';
+import { INSPECTED_KEEP_DAYS } from '@/api/returns';
 import { downloadCsv } from '@/lib/csv';
 import { today } from '@/lib/format';
+import { readText, writeText } from '@/lib/storage';
 import * as s from './ReturnsPage.css';
 import * as p from './pages.css';
 
 const NOTICE_KEY = 'welfin.returns.noticeHiddenOn';
+const CHANNEL_FIRST_KEY = 'welfin.returns.channelFirst';
+
+const CHANNEL_ORDER_OPTIONS: Array<DropdownOption<ChannelGroup | ''>> = [
+  { value: '', label: '접수처 순서 없음' },
+  ...(['starpack', 'ezadmin', 'other'] as const).map((group) => ({
+    value: group,
+    label: `${CHANNEL_GROUP_LABEL[group]} 먼저`,
+  })),
+];
+
+function readChannelFirst(): ChannelGroup | '' {
+  const value = readText(CHANNEL_FIRST_KEY);
+  return value === 'starpack' || value === 'ezadmin' || value === 'other' ? value : '';
+}
 /** 배송조회를 이 시간보다 오래 전에 했으면 페이지에 들어올 때 다시 조회 */
 const STALE_MS = 2 * 60 * 60 * 1000;
 
 function readHiddenOn(): string | null {
-  try {
-    return localStorage.getItem(NOTICE_KEY);
-  } catch {
-    return null;
-  }
+  return readText(NOTICE_KEY);
 }
 
 export function ReturnsPage() {
@@ -42,6 +60,10 @@ export function ReturnsPage() {
   const [hideToday, setHideToday] = useState(false);
   const [trackingNotice, setTrackingNotice] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  /** 검수완료 탭 정렬: 최근 검수순 / 오래된 검수순 */
+  const [inspectedOrder, setInspectedOrder] = useState<'desc' | 'asc'>('desc');
+  /** 접수처 순서: 고른 접수처를 위로 모은다 (그 안의 순서는 그대로) */
+  const [channelFirst, setChannelFirst] = useState<ChannelGroup | ''>(readChannelFirst);
 
   const list = useMemo(() => returns.data ?? [], [returns.data]);
 
@@ -63,9 +85,17 @@ export function ReturnsPage() {
 
   const visible = useMemo(() => {
     const rows = searched.filter((item) => matchesFilter(item, filter, todayString));
-    if (filter === 'inspected') rows.sort((a, b) => (b.inspectedAt ?? '').localeCompare(a.inspectedAt ?? ''));
-    return rows;
-  }, [searched, filter, todayString]);
+    if (filter === 'inspected') {
+      const dir = inspectedOrder === 'desc' ? -1 : 1;
+      rows.sort((a, b) => dir * (a.inspectedAt ?? '').localeCompare(b.inspectedAt ?? ''));
+    }
+    return channelFirst ? sortByChannel(rows, channelFirst) : rows;
+  }, [searched, filter, todayString, inspectedOrder, channelFirst]);
+
+  const changeChannelFirst = (value: ChannelGroup | '') => {
+    setChannelFirst(value);
+    writeText(CHANNEL_FIRST_KEY, value);
+  };
 
   const productNames = useMemo(
     () => new Map((products.data ?? []).map((product) => [product.sku.toUpperCase(), product.name])),
@@ -86,11 +116,7 @@ export function ReturnsPage() {
 
   const closeNotice = () => {
     if (hideToday) {
-      try {
-        localStorage.setItem(NOTICE_KEY, todayString);
-      } catch {
-        // 저장이 안 되는 브라우저면 다음에 다시 뜬다
-      }
+      writeText(NOTICE_KEY, todayString);
     }
     setNoticeOpen(false);
   };
@@ -171,7 +197,7 @@ export function ReturnsPage() {
       ['접수일', '접수처', '접수 차수', '상태', '관리번호', '주문번호', '수령자', '연락처', '주소', '제품', '수량', '구분', '사유', '택배사', '회수송장', '배송현황', '메모'],
       visible.map((r) => [
         r.receivedOn,
-        RETURN_CHANNEL_LABEL[returnChannel(r)],
+        returnChannelLabel(r),
         attemptLabel(attemptOf(r.rerequestCount)) ?? '',
         RETURN_STATUS_LABEL[r.status],
         r.mgmtNo ?? '',
@@ -197,7 +223,7 @@ export function ReturnsPage() {
     <div className={p.stack}>
       <PageHeader
         title="회수"
-        description={`반품·교환 회수 접수부터 검수까지 관리해요. ${OVERDUE_ATTEMPT}차 접수까지 했는데 집화가 안 되면 장기 미수로 표시돼요`}
+        description={`금일 회수 접수내역은 저녁 6시 이후, 회수 송장번호는 익일 오전 9시 이후에 확인할 수 있어요.`}
       />
 
       <ReturnInput existing={list} />
@@ -245,11 +271,27 @@ export function ReturnsPage() {
             {filter === 'uncollected' && '회수 송장은 나왔는데 배송조회에 아직 집화처리가 안 잡힌 건이에요'}
             {filter === 'in_transit' && '송장이 있고 미집화 · 집화출발 · 배송완료가 아닌, 실제로 이동 중인 건이에요'}
             {filter === 'collected' && '도착했어요. 실물 확인 후 검수완료를 눌러주세요'}
-            {filter === 'inspected' && '최근 30일 동안 검수완료한 건이에요'}
+            {filter === 'inspected' && `최근 ${INSPECTED_KEEP_DAYS}일 동안 검수완료한 건이에요`}
             {filter === 'today' && '오늘 접수한 건이에요. 회수 송장은 보통 다음날 나와요'}
-            {filter === 'all' && '진행 중인 건 전부와 최근 30일 검수완료 건이에요'}
+            {filter === 'all' && `진행 중인 건 전부와 최근 ${INSPECTED_KEEP_DAYS}일 검수완료 건이에요`}
           </p>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+            <Dropdown
+              ariaLabel="접수처 순서"
+              align="end"
+              value={channelFirst}
+              options={CHANNEL_ORDER_OPTIONS}
+              onChange={(v) => changeChannelFirst(v as ChannelGroup | '')}
+            />
+            {filter === 'inspected' && (
+              <Button
+                size="sm"
+                variant="weak"
+                onClick={() => setInspectedOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+              >
+                {inspectedOrder === 'desc' ? '검수일 최신순 ↓' : '검수일 오래된순 ↑'}
+              </Button>
+            )}
             {(filter === 'in_transit' || filter === 'overdue' || filter === 'uncollected') && (
               <Button
                 size="sm"

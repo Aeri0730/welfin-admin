@@ -23,6 +23,12 @@ globalStyle('button, input, select, textarea', {
   color: 'inherit',
 });
 
+// 브라우저 기본 버튼 테두리·회색 배경 제거 (각 버튼 스타일이 배경을 따로 정함)
+globalStyle('button', {
+  border: 'none',
+  background: 'none',
+});
+
 globalStyle('a', {
   color: 'inherit',
   textDecoration: 'none',

@@ -36,6 +36,8 @@ export const badge = recipe({
       green: { background: vars.color.green50, color: vars.color.green500 },
       orange: { background: vars.color.orange50, color: vars.color.orange500 },
       grey: { background: vars.color.grey100, color: vars.color.grey600 },
+      purple: { background: '#F3EEFF', color: '#7A4FE0' },
+      pink: { background: '#FFEEF6', color: '#D6368A' },
     },
   },
   defaultVariants: { tone: 'grey' },

@@ -84,7 +84,13 @@ export interface Movement {
   toWarehouse: { id: number; name: string } | null;
   partner: { id: number; name: string } | null;
   createdBy: string;
+  /** 예정 시각 (비어 있으면 즉시 반영된 기록) */
+  scheduledAt: string | null;
 }
+
+/** 아직 예정 시각이 안 돼서 재고에 반영되지 않은 기록인지 */
+export const isPending = (m: Pick<Movement, 'scheduledAt'>, now = Date.now()) =>
+  Boolean(m.scheduledAt && new Date(m.scheduledAt).getTime() > now);
 
 export interface MovementFilter {
   from: string;
@@ -101,6 +107,10 @@ export interface CreateMovementsInput {
   partnerId: number | null;
   memo: string;
   items: Array<{ productId: number; quantity: number }>;
+  /** 재고가 부족해도 저장 (사용자가 확인 모달에서 '네' 를 누른 경우) */
+  allowNegative?: boolean;
+  /** 예정 시각 (ISO). 미래면 그 시각 이후에 재고에 반영 */
+  scheduledAt?: string | null;
 }
 
 export interface CreateProductInput {
@@ -156,7 +166,17 @@ export const RETURN_CHANNEL_LABEL: Record<ReturnChannel, string> = {
   starpack: '스타팩',
 };
 
-export const returnChannel = (item: { mgmtNo: string | null }): ReturnChannel => (item.mgmtNo ? 'ezadmin' : 'starpack');
+/** 접수처 값: 직접 지정한 값이 있으면 그것, 없으면 관리번호 유무로 판단 ('ezadmin' | 'starpack' | 직접 입력한 이름) */
+export const returnChannel = (item: { mgmtNo: string | null; channel: string | null }): string =>
+  item.channel?.trim() || (item.mgmtNo ? 'ezadmin' : 'starpack');
+
+export const isKnownChannel = (value: string): value is ReturnChannel => value in RETURN_CHANNEL_LABEL;
+
+/** 화면에 보일 접수처 이름 */
+export const returnChannelLabel = (item: { mgmtNo: string | null; channel: string | null }): string => {
+  const value = returnChannel(item);
+  return isKnownChannel(value) ? RETURN_CHANNEL_LABEL[value] : value;
+};
 
 export const CARRIER_LABEL: Record<Carrier, string> = {
   cj: 'CJ대한통운',
@@ -208,6 +228,8 @@ export interface ReturnItem {
   /** 양품화 여부 */
   restocked: boolean;
   restockedAt: string | null;
+  /** 직접 지정한 접수처 (null 이면 관리번호 유무로 판단) */
+  channel: string | null;
   createdAt: string;
 }
 
@@ -243,6 +265,8 @@ export interface ReturnPatch {
   memo?: string | null;
   rerequestCount?: number;
   restocked?: boolean;
+  /** null = 관리번호 유무로 자동 판단 */
+  channel?: string | null;
 }
 
 /* ---------- 매출 ---------- */

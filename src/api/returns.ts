@@ -13,6 +13,9 @@ function toError(error: { message: string; code?: string }): Error {
   if (error.code === '23505') return new Error('이미 등록된 관리번호가 있어요');
   if (error.code === '42501') return new Error('권한이 없어요. 관리자에게 문의해주세요');
   if (error.code === '42P01') return new Error('회수 테이블이 없어요. supabase/migrations/0003_returns.sql 을 먼저 실행해주세요');
+  if (error.code === '42703' && /channel/.test(error.message)) {
+    return new Error('접수처 칸이 없어요. supabase/migrations/0018_return_channel.sql 을 먼저 실행해주세요');
+  }
   if (error.code === '42703' && /rerequest_count|restocked/.test(error.message)) {
     return new Error('재접수·양품화 칸이 없어요. supabase/migrations/0005_returns_rerequest.sql 을 먼저 실행해주세요');
   }
@@ -24,7 +27,7 @@ const COLUMNS = `
   recipient, phone, address, product_text, sku, quantity, kind, reason,
   carrier, invoice_no, status, collected_at, inspected_at,
   tracking_code, tracking_label, tracking_location, tracking_time, tracking_events,
-  tracking_checked_at, tracking_error, memo, rerequest_count, restocked, restocked_at, created_at
+  tracking_checked_at, tracking_error, memo, rerequest_count, restocked, restocked_at, channel, created_at
 `;
 
 interface ReturnRow {
@@ -59,6 +62,7 @@ interface ReturnRow {
   rerequest_count: number | null;
   restocked: boolean | null;
   restocked_at: string | null;
+  channel: string | null;
   created_at: string;
 }
 
@@ -97,13 +101,18 @@ function mapRow(row: ReturnRow): ReturnItem {
     rerequestCount: row.rerequest_count ?? 0,
     restocked: Boolean(row.restocked),
     restockedAt: row.restocked_at,
+    channel: row.channel,
     createdAt: row.created_at,
   };
 }
 
-/** 진행 중인 건 전부 + 최근 30일 안에 검수완료된 건 */
+/** 검수완료 건은 이 기간 안의 것만 불러온다 (회수 화면 안내 문구와 같은 값) */
+export const INSPECTED_KEEP_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** 진행 중인 건 전부 + 최근 INSPECTED_KEEP_DAYS 일 안에 검수완료된 건 */
 export async function fetchReturns(): Promise<ReturnItem[]> {
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - INSPECTED_KEEP_DAYS * DAY_MS).toISOString();
   const { data, error } = await supabase
     .from('returns')
     .select(COLUMNS)
@@ -157,6 +166,7 @@ async function toColumns(current: Pick<ReturnItem, 'status' | 'invoiceNo'>, patc
   if (patch.reason !== undefined) columns.reason = patch.reason;
   if (patch.carrier !== undefined) columns.carrier = patch.carrier;
   if (patch.memo !== undefined) columns.memo = patch.memo;
+  if (patch.channel !== undefined) columns.channel = patch.channel;
   if (patch.rerequestCount !== undefined) columns.rerequest_count = patch.rerequestCount;
   if (patch.restocked !== undefined) {
     columns.restocked = patch.restocked;

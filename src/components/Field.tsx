@@ -1,5 +1,12 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  useId,
+  type ChangeEvent,
+  type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cx } from '@/lib/cx';
+import { Dropdown, type DropdownOption } from './Dropdown';
 import * as styles from './Field.css';
 
 interface FieldShellProps {
@@ -43,13 +50,65 @@ export function TextField({ label, hint, error, containerClassName, className, .
   );
 }
 
-export function SelectField({ label, hint, error, containerClassName, className, children, ...rest }: Common & SelectHTMLAttributes<HTMLSelectElement>) {
+/** <option> 자식들을 드롭다운 항목으로 바꾼다 (map 배열·Fragment 도 펼침) */
+function optionsFrom(children: ReactNode): DropdownOption<string>[] {
+  const result: DropdownOption<string>[] = [];
+  const textOf = (node: ReactNode): string => {
+    if (node === null || node === undefined || typeof node === 'boolean') return '';
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(textOf).join('');
+    if (isValidElement<{ children?: ReactNode }>(node)) return textOf(node.props.children);
+    return '';
+  };
+  const walk = (node: ReactNode) => {
+    Children.forEach(node, (child) => {
+      if (!isValidElement<{ value?: string | number; children?: ReactNode }>(child)) return;
+      if (child.type === Fragment) return walk(child.props.children);
+      if (child.type === 'option') {
+        const text = textOf(child.props.children);
+        result.push({ value: String(child.props.value ?? text), label: text });
+      }
+    });
+  };
+  walk(children);
+  return result;
+}
+
+/**
+ * 선택칸: 겉모양은 토스 톤 드롭다운, 쓰는 법은 예전 <select> 그대로
+ * (<option> 자식 + onChange 에서 e.target.value)
+ */
+export function SelectField({
+  label,
+  hint,
+  error,
+  containerClassName,
+  className,
+  children,
+  value,
+  onChange,
+  disabled,
+  'aria-label': ariaLabel,
+}: Common & SelectHTMLAttributes<HTMLSelectElement>) {
+  const options = optionsFrom(children);
+  const current = String(value ?? '');
+  const shown = options.some((o) => o.value === current) ? current : (options[0]?.value ?? '');
   return (
     <FieldShell label={label} hint={hint} error={error} className={containerClassName}>
       {(id) => (
-        <select id={id} className={cx(styles.select, className)} aria-invalid={Boolean(error) || undefined} {...rest}>
-          {children}
-        </select>
+        <Dropdown
+          id={id}
+          variant="field"
+          className={className}
+          ariaLabel={ariaLabel ?? label ?? '선택'}
+          value={shown}
+          options={options}
+          disabled={disabled}
+          invalid={Boolean(error)}
+          onChange={(next) =>
+            onChange?.({ target: { value: next }, currentTarget: { value: next } } as unknown as ChangeEvent<HTMLSelectElement>)
+          }
+        />
       )}
     </FieldShell>
   );

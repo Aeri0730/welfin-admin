@@ -21,16 +21,31 @@ export const overlay = style({
   },
 });
 
+/** 둥근 겉 상자: 안쪽 스크롤바가 모서리를 덮지 않도록 잘라낸다 */
 export const panel = style({
+  display: 'flex',
+  flexDirection: 'column',
   width: '100%',
   maxHeight: '90dvh',
-  overflowY: 'auto',
-  padding: '24px 20px calc(20px + env(safe-area-inset-bottom))',
+  overflow: 'hidden',
   borderRadius: '24px 24px 0 0',
   background: vars.color.white,
   animation: `${popIn} 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)`,
   '@media': {
-    [media.tablet]: { maxWidth: 480, borderRadius: vars.radius.xl, padding: 28 },
+    [media.tablet]: { maxWidth: 480, borderRadius: vars.radius.xl },
+  },
+});
+
+/** 실제로 스크롤되는 안쪽 */
+export const scroll = style({
+  minHeight: 0,
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  scrollbarWidth: 'thin',
+  scrollbarColor: `${vars.color.grey300} transparent`,
+  padding: '24px 20px calc(20px + env(safe-area-inset-bottom))',
+  '@media': {
+    [media.tablet]: { padding: 28 },
   },
 });
 

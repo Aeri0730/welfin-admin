@@ -33,3 +33,18 @@ const dateLabelFormatter = new Intl.DateTimeFormat('ko-KR', {
 export function formatDateLabel(dateString: string): string {
   return dateLabelFormatter.format(new Date(`${dateString}T00:00:00`));
 }
+
+const dateTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** ISO 시각 → "11. 24. 14:05" (비었으면 빈 글자, 못 읽으면 원래 글자) */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : dateTimeFormatter.format(date);
+}

@@ -1,4 +1,4 @@
-import type { Movement } from '@/api/types';
+import { isPending, MOVEMENT_LABEL, type Movement } from '@/api/types';
 import type { BadgeTone } from '@/components/ui';
 
 export const MOVEMENT_TONE: Record<Movement['type'], BadgeTone> = {
@@ -28,4 +28,32 @@ export function signedQuantity(m: Movement): number {
   if (m.type === 'outbound') return -m.quantity;
   if (m.type === 'adjust') return m.fromWarehouse ? -m.quantity : m.quantity;
   return 0;
+}
+
+/** 예정 건 배지 색: 일반 입고·출고와 구분되게 */
+const PENDING_TONE: Record<Movement['type'], BadgeTone> = {
+  inbound: 'purple',
+  outbound: 'pink',
+  transfer: 'purple',
+  adjust: 'purple',
+};
+
+/** 배지 글자와 색: 예정이면 '입고 예정' 처럼 */
+export function movementBadge(m: Movement, now = Date.now()): { label: string; tone: BadgeTone } {
+  if (isPending(m, now)) return { label: `${MOVEMENT_LABEL[m.type]} 예정`, tone: PENDING_TONE[m.type] };
+  return { label: MOVEMENT_LABEL[m.type], tone: MOVEMENT_TONE[m.type] };
+}
+
+const scheduleFormatter = new Intl.DateTimeFormat('ko-KR', {
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** '11. 25. (화) 14:00' */
+export function formatSchedule(iso: string): string {
+  return scheduleFormatter.format(new Date(iso));
 }

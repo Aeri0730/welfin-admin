@@ -12,7 +12,7 @@ export function Card({ title, className, children, ...rest }: HTMLAttributes<HTM
   );
 }
 
-export type BadgeTone = 'blue' | 'red' | 'green' | 'orange' | 'grey';
+export type BadgeTone = 'blue' | 'red' | 'green' | 'orange' | 'grey' | 'purple' | 'pink';
 
 export function Badge({ tone, children }: { tone?: BadgeTone; children: ReactNode }) {
   return <span className={styles.badge({ tone })}>{children}</span>;

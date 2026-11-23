@@ -3,23 +3,25 @@
  * "신규 접수 / 송장 등록 / 반품·교환 지정" 작업으로 바꾼다.
  *
  * 지원하는 줄 형태
- *  [접수 1] 관리번호  주문번호  발주일  배송일  수령자  판매처상품  수량
+ *  [접수 1] 관리번호  주문번호  발주일  배송일  수령자  판매처상품  수량  (전화번호)
  *  [접수 2] 수령자  주소  제품  수량  연락처
  *  [송장 1] 관리번호  회수송장번호
  *  [송장 2] 회수송장번호  이름  연락처
  *  [구분]   (관리번호)  이름  반품(사유) / 교환(사유)
+ *  [검수]   회수송장번호 (한 줄에 여러 개도 가능) → 회수완료 건을 검수완료로
  *
  * 송장 줄에 '롯데' / '직접' 이 들어 있으면 그 택배사로, 없으면 기본 택배사로 등록한다.
  */
 import type { Carrier, NewReturnInput, Product, ReturnItem, ReturnKind, ReturnPatch } from '@/api/types';
 
-export type InputMode = 'auto' | 'intake' | 'invoice' | 'kind';
+export type InputMode = 'auto' | 'intake' | 'invoice' | 'kind' | 'inspect';
 
 export const INPUT_MODE_LABEL: Record<InputMode, string> = {
   auto: '통합 (자동 판별)',
   intake: '회수 접수',
   invoice: '회수 송장',
   kind: '반품/교환 구분',
+  inspect: '회수완료 → 검수완료',
 };
 
 /* ------------------------------------------------------------------ */
@@ -33,11 +35,11 @@ const KIND_RE = /(반품|교환)/;
 const SKU_RE = /WELFIN-\d+/i;
 
 const INTAKE1_RE = new RegExp(
-  String.raw`^(\d{4,10})\s+(\S+)\s+(${DATETIME_SRC})\s+(${DATETIME_SRC})\s+(\S+)\s+(.+?)\s+(\d{1,4})\s*$`,
+  String.raw`^(\d{4,10})\s+(\S+)\s+(${DATETIME_SRC})\s+(${DATETIME_SRC})\s+(\S+)\s+(.+?)\s+(\d{1,4})(?:\s+(0\d{1,3}[-.]?\d{3,4}[-.]?\d{4}))?\s*$`,
 );
 
 type Parsed =
-  | { type: 'intake1'; mgmtNo: string; orderNo: string; orderedAt: string; shippedAt: string; recipient: string; productText: string; quantity: number }
+  | { type: 'intake1'; mgmtNo: string; orderNo: string; orderedAt: string; shippedAt: string; recipient: string; productText: string; quantity: number; phone: string | null }
   | { type: 'intake2'; recipient: string; address: string; productText: string; quantity: number; phone: string; warning?: string }
   | { type: 'invoice1'; mgmtNo: string; invoiceNo: string; carrier: Carrier | null }
   | { type: 'invoice2'; invoiceNo: string; recipient: string; phone: string; carrier: Carrier | null }
@@ -82,7 +84,7 @@ function splitColumns(line: string): string[] {
 }
 
 function isHeader(line: string) {
-  return /관리번호|수령자|송장번호|주문번호|연락처/.test(line) && !/\d{5,}/.test(line);
+  return /관리번호|수령자|송장번호|주문번호|연락처|전화번호/.test(line) && !/\d{5,}/.test(line);
 }
 
 /** 주소·제품이 띄어쓰기로만 이어진 경우: 제품이 시작되는 위치를 찾는다 */
@@ -157,6 +159,7 @@ function parseIntake(line: string, products: Product[]): Parsed | null {
       recipient: m1[5],
       productText: cleanProductText(m1[6]),
       quantity: Number(m1[7]),
+      phone: m1[8] ? formatPhone(m1[8]) : null,
     };
   }
 
@@ -217,7 +220,7 @@ function parseLine(line: string, mode: InputMode, products: Product[]): Parsed {
   const tryIntake = () => parseIntake(line, products);
 
   const order =
-    mode === 'kind' ? [parseKind.bind(null, line)]
+    mode === 'kind' || mode === 'inspect' ? [parseKind.bind(null, line)]
     : mode === 'invoice' ? [tryInvoice]
     : mode === 'intake' ? [tryIntake]
     : (() => {
@@ -293,8 +296,63 @@ export interface PasteOptions {
 
 const KIND_TEXT: Record<ReturnKind, string> = { return: '반품', exchange: '교환' };
 
+/** 송장번호만 붙여넣으면 회수완료 건을 검수완료로 바꾼다 */
+function planInspect(text: string, existing: ReturnItem[]): PlanRow[] {
+  const rows: PlanRow[] = [];
+  const seen = new Map<string, number>();
+  let lineNo = 0;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const raw = rawLine.trim();
+    if (!raw || isHeader(raw)) continue;
+    // 하이픈으로 끊긴 송장(1234-5678-9012)도 하나로 본다
+    const numbers = (raw.match(/\d[\d-]*\d/g) ?? []).map(digits).filter((n) => n.length >= 10 && n.length <= 14);
+    if (numbers.length === 0) {
+      rows.push({ status: 'error', lineNo: ++lineNo, raw, message: '송장번호(10~14자리)를 찾지 못했어요' });
+      continue;
+    }
+    for (const invoiceNo of numbers) {
+      const no = ++lineNo;
+      const label = numbers.length > 1 ? invoiceNo : raw;
+      const prev = seen.get(invoiceNo);
+      if (prev !== undefined) {
+        rows.push({ status: 'skip', lineNo: no, raw: label, message: `${prev}번째와 같은 송장이에요` });
+        continue;
+      }
+      seen.set(invoiceNo, no);
+      const matches = existing.filter((r) => r.invoiceNo && digits(r.invoiceNo) === invoiceNo);
+      if (matches.length === 0) {
+        rows.push({ status: 'error', lineNo: no, raw: label, message: `송장 ${invoiceNo} 회수 건이 없어요` });
+        continue;
+      }
+      const collected = matches.filter((r) => r.status === 'collected');
+      if (collected.length === 0) {
+        const already = matches.some((r) => r.status === 'inspected');
+        rows.push(
+          already
+            ? { status: 'skip', lineNo: no, raw: label, message: `송장 ${invoiceNo} 는 이미 검수완료예요` }
+            : { status: 'error', lineNo: no, raw: label, message: `송장 ${invoiceNo} 는 아직 회수완료가 아니에요` },
+        );
+        continue;
+      }
+      // 같은 송장으로 묶인 회수 건(여러 제품)은 모두 검수완료
+      collected.forEach((target, i) =>
+        rows.push({
+          status: 'update',
+          lineNo: i === 0 ? no : ++lineNo,
+          raw: label,
+          target,
+          label: `송장 ${invoiceNo} 검수완료`,
+          patch: { status: 'inspected' },
+        }),
+      );
+    }
+  }
+  return rows;
+}
+
 export function planPaste(text: string, options: PasteOptions): PlanRow[] {
   const { mode, receivedOn, defaultCarrier, existing, products } = options;
+  if (mode === 'inspect') return planInspect(text, existing);
   const rows: PlanRow[] = [];
   const active = existing.filter((r) => r.status !== 'inspected');
   const byMgmt = new Map(existing.filter((r) => r.mgmtNo).map((r) => [r.mgmtNo as string, r]));
@@ -345,7 +403,7 @@ export function planPaste(text: string, options: PasteOptions): PlanRow[] {
             orderedAt: parsed.orderedAt,
             shippedAt: parsed.shippedAt,
             recipient: parsed.recipient,
-            phone: null,
+            phone: parsed.phone,
             address: null,
             productText: parsed.productText,
             sku: findSku(parsed.productText),

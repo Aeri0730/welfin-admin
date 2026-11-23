@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { signOut } from '@/api/auth';
+import { useScheduledRefresh } from '@/api/queries';
 import { Button } from '@/components/Button';
 import { Icon, type IconName } from '@/components/Icon';
 import { ToastViewport } from '@/components/Toast';
@@ -26,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
     children: [
       { to: '/stock', label: '재고현황' },
       { to: '/stock/storage', label: '보관비' },
+      { to: '/stock/compare', label: '사이트 재고 비교' },
     ],
   },
   { to: '/sales', label: '매출', icon: 'chart' },
@@ -39,8 +41,24 @@ const NAV_ITEMS: NavItem[] = [
       { to: '/settlement/dispatch', label: '배차비' },
     ],
   },
-  { to: '/inbound', label: '입고', icon: 'inbound' },
-  { to: '/outbound', label: '출고', icon: 'outbound' },
+  {
+    to: '/inbound',
+    label: '입고',
+    icon: 'inbound',
+    children: [
+      { to: '/inbound', label: '입고 입력' },
+      { to: '/inbound/status', label: '입고 현황' },
+    ],
+  },
+  {
+    to: '/outbound',
+    label: '출고',
+    icon: 'outbound',
+    children: [
+      { to: '/outbound', label: '출고 입력' },
+      { to: '/outbound/status', label: '출고 현황' },
+    ],
+  },
   { to: '/returns', label: '회수', icon: 'return' },
   { to: '/transfer', label: '창고 이동', icon: 'transfer' },
   { to: '/history', label: '입출고 내역', icon: 'list' },
@@ -68,6 +86,7 @@ const TAB_ITEMS: TabItem[] = [
 ];
 
 export function AppLayout() {
+  useScheduledRefresh();
   const { data: profile } = useProfile();
   const queryClient = useQueryClient();
   const location = useLocation();

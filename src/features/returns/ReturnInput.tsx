@@ -9,6 +9,7 @@ import {
 } from "@/api/types";
 import { Button } from "@/components/Button";
 import { SelectField, TextAreaField, TextField } from "@/components/Field";
+import { Tooltip } from "@/components/Tooltip";
 import { useToast } from "@/components/Toast";
 import { Badge, Card, ErrorBox, type BadgeTone } from "@/components/ui";
 import { today } from "@/lib/format";
@@ -33,13 +34,33 @@ const PLAN_BADGE: Record<
   duplicate: { label: "중복 확인", tone: "orange" },
 };
 
+/** 붙여넣기 칸 위 '입력 형식' 툴팁 내용 (열 순서) */
+const FORMAT_GUIDE: Array<{ title: string; rows: Array<[string, string[]]> }> = [
+  {
+    title: "접수",
+    rows: [
+      ["이지어드민", ["관리번호", "주문번호", "발주일", "배송일", "수령자", "판매처상품", "수량", "전화번호1"]],
+      ["스타팩", ["수령자", "연락처", "제품", "수량"]],
+    ],
+  },
+  {
+    title: "송장 입력",
+    rows: [
+      ["이지어드민", ["관리번호", "반송장번호"]],
+      ["스타팩", ["반송장번호", "수령자", "연락처", "제품"]],
+    ],
+  },
+];
+
 const PLACEHOLDER: Record<InputMode, string> = {
   auto: "엑셀·메신저에서 복사한 내용을 그대로 붙여넣으세요. 줄마다 형태를 알아서 판별해요.",
   intake:
-    "4080710  네이-169581  2026-10-19 15:31  2026-10-19 15:57  구근호  WELFIN-010 …  1\n홍길동  서울시 강남구 …  WELFIN-014 에어히터  1  010-1234-5678",
+    "4080710  네이-169581  2026-10-19 15:31  2026-10-19 15:57  구근호  WELFIN-010 …  1  010-1234-5678\n홍길동  서울시 강남구 …  WELFIN-014 에어히터  1  010-1234-5678",
   invoice:
     "4080710  685012345678\n685012349999  홍길동  010-1234-5678\n4203859  512345678901  롯데",
   kind: "구근호 반품(단순변심)\n홍길동 교환(불량)\n4080710 김민수 반품(오배송)   ← 동명이인은 관리번호와 함께",
+  inspect:
+    "685012345678\n685012349999\n512345678901  512345670000\n← 회수 송장번호만 여러 개 넣으면 회수완료 건이 검수완료로 바뀌어요",
 };
 
 function describe(row: PlanRow): string {
@@ -236,6 +257,24 @@ export function ReturnInput({ existing }: { existing: ReturnItem[] }) {
         </div>
 
         <div>
+          <div className={s.pasteHead}>
+            <span className={s.pasteLabel}>붙여넣기</span>
+            <Tooltip label="입력 형식">
+              {FORMAT_GUIDE.map((group) => (
+                <span key={group.title} className={s.formatGroup} style={{ display: "block" }}>
+                  <span className={s.formatTitle} style={{ display: "block" }}>
+                    {group.title}
+                  </span>
+                  {group.rows.map(([site, cols]) => (
+                    <span key={site} className={s.formatRow}>
+                      <span className={s.formatSite}>{site}</span>
+                      <span className={s.formatCols}>{cols.join(" · ")}</span>
+                    </span>
+                  ))}
+                </span>
+              ))}
+            </Tooltip>
+          </div>
           <TextAreaField
             aria-label="붙여넣기"
             className={s.pasteArea}
@@ -244,11 +283,18 @@ export function ReturnInput({ existing }: { existing: ReturnItem[] }) {
             onChange={(e) => changeInput(() => setText(e.target.value))}
             spellCheck={false}
           />
-          <p className={s.helpText}>
-            송장 줄에 <b>롯데</b> 또는 <b>직접</b>을 같이 적으면 그 택배사로
-            등록돼요. 반품/교환은 <b>이름 반품(사유)</b>처럼 적고, 동명이인만
-            관리번호를 앞에 붙여주세요.
-          </p>
+          {mode === "inspect" ? (
+            <p className={s.helpText}>
+              <b>회수완료</b> 상태인 건만 검수완료로 바뀌어요. 줄바꿈·띄어쓰기·쉼표로
+              여러 송장을 한 번에 넣을 수 있어요.
+            </p>
+          ) : (
+            <p className={s.helpText}>
+              송장 줄에 <b>롯데</b> 또는 <b>직접</b>을 같이 적으면 그 택배사로
+              등록돼요. 반품/교환은 <b>이름 반품(사유)</b>처럼 적고, 동명이인만
+              관리번호를 앞에 붙여주세요.
+            </p>
+          )}
           <div className={s.inputActions}>
             {plan && (
               <Button variant="weak" onClick={() => setPlan(null)}>

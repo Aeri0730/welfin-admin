@@ -1,10 +1,40 @@
 import { useState } from 'react';
-import { CARRIER_LABEL, RETURN_CHANNEL_LABEL, RETURN_KIND_LABEL, RETURN_STATUS_LABEL, returnChannel, type ReturnItem, type ReturnStatus } from '@/api/types';
+import { CARRIER_LABEL, RETURN_KIND_LABEL, RETURN_STATUS_LABEL, returnChannel, returnChannelLabel, type ReturnItem, type ReturnStatus } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
-import { Badge } from '@/components/ui';
-import { attemptLabel, attemptOf, carrierTrackingUrl, daysSince, formatTime, isOverdue, isTrackable, isUncollected, STATUS_TONE, trackingTone } from './status';
+import { Badge, type BadgeTone } from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
+import {
+  attemptLabel,
+  attemptOf,
+  carrierTrackingUrl,
+  daysSince,
+  isAtPickup,
+  isDelivered,
+  isOverdue,
+  isTrackable,
+  isUncollected,
+  STATUS_TONE,
+  trackingTone,
+} from './status';
 import * as s from '@/pages/ReturnsPage.css';
+
+/**
+ * 상태 칩은 하나만: 회수 송장이 나온 건은 배송조회 상태에 따라
+ * 미집화 / 집화출발 / 도착(배송완료) / 회수중 중 하나로 보여준다.
+ * 회수중 탭 조건(isReturning)과 같은 기준이다.
+ */
+function statusChip(item: ReturnItem): { label: string; tone: BadgeTone } {
+  if (item.status === 'in_transit') {
+    if (isUncollected(item)) return { label: '미집화', tone: 'orange' };
+    if (isAtPickup(item)) return { label: '집화출발', tone: 'purple' };
+    if (isDelivered(item)) return { label: '도착', tone: 'green' };
+  }
+  return { label: RETURN_STATUS_LABEL[item.status], tone: STATUS_TONE[item.status] };
+}
+
+/** 접수처 칩 색: 직접 입력한 접수처는 보라 */
+const CHANNEL_TONE: Record<string, BadgeTone | undefined> = { ezadmin: 'blue', starpack: 'grey' };
 
 interface ReturnRowProps {
   item: ReturnItem;
@@ -33,6 +63,7 @@ export function ReturnRow({
   const [open, setOpen] = useState(false);
   const days = daysSince(item.receivedOn, todayString);
   const overdue = isOverdue(item);
+  const chip = statusChip(item);
   const link = item.invoiceNo ? carrierTrackingUrl(item.carrier, item.invoiceNo) : null;
   const t = item.tracking;
 
@@ -50,9 +81,8 @@ export function ReturnRow({
             />
           )}
           {item.recipient}
-          <Badge tone={returnChannel(item) === 'ezadmin' ? 'blue' : 'grey'}>{RETURN_CHANNEL_LABEL[returnChannel(item)]}</Badge>
-          <Badge tone={STATUS_TONE[item.status]}>{RETURN_STATUS_LABEL[item.status]}</Badge>
-          {isUncollected(item) && <Badge tone="orange">미집화</Badge>}
+          <Badge tone={CHANNEL_TONE[returnChannel(item)] ?? 'purple'}>{returnChannelLabel(item)}</Badge>
+          <Badge tone={chip.tone}>{chip.label}</Badge>
           {item.restocked && <Badge tone="green">양품화</Badge>}
           {item.rerequestCount > 0 && (
             <Badge tone={overdue ? 'red' : 'orange'}>{attemptLabel(attemptOf(item.rerequestCount))}</Badge>
@@ -75,6 +105,7 @@ export function ReturnRow({
           {item.mgmtNo && ` · 관리번호 ${item.mgmtNo}`}
           {item.orderNo && ` · ${item.orderNo}`}
           {item.phone && ` · ${item.phone}`}
+          {item.status === 'inspected' && item.inspectedAt && ` · 검수 ${formatDateTime(item.inspectedAt)}`}
         </p>
         {item.address && <p className={s.itemMeta}>{item.address}</p>}
         {item.memo && (
@@ -99,7 +130,7 @@ export function ReturnRow({
               <div className={s.trackLine}>
                 <Badge tone={trackingTone(t.code)}>{t.label ?? (t.error ? '조회 실패' : '조회 전')}</Badge>
                 {t.location && <span>{t.location}</span>}
-                {t.time && <span>{formatTime(t.time)}</span>}
+                {t.time && <span>{formatDateTime(t.time)}</span>}
                 {t.events.length > 0 && (
                   <button type="button" className={s.linkButton} onClick={() => setOpen((v) => !v)}>
                     {open ? '경로 접기' : `이동 경로 ${t.events.length}`}
@@ -119,14 +150,14 @@ export function ReturnRow({
               <p className={s.itemMeta}>자동 조회 안 됨 · 도착하면 회수완료를 눌러주세요</p>
             )}
             {t.error && <p className={s.errorText}>{t.error}</p>}
-            {t.checkedAt && <p className={s.itemMeta}>조회 {formatTime(t.checkedAt)}</p>}
+            {t.checkedAt && <p className={s.itemMeta}>조회 {formatDateTime(t.checkedAt)}</p>}
             {open && (
               <ol className={s.timeline}>
                 {t.events.map((event, index) => (
                   <li key={`${event.time}-${index}`} className={s.timelineItem}>
                     <span className={s.timelineHead}>{event.label}</span>
                     {event.location && ` · ${event.location}`}
-                    {event.time && ` · ${formatTime(event.time)}`}
+                    {event.time && ` · ${formatDateTime(event.time)}`}
                     {event.description && <div>{event.description}</div>}
                   </li>
                 ))}

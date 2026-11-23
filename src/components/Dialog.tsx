@@ -31,16 +31,18 @@ export function Dialog({ open, onClose, title, children, footer, wide, headerAct
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        {headerAction ? (
-          <div className={styles.header}>
+        <div className={styles.scroll}>
+          {headerAction ? (
+            <div className={styles.header}>
+              <h2 className={styles.title}>{title}</h2>
+              <div className={styles.headerAction}>{headerAction}</div>
+            </div>
+          ) : (
             <h2 className={styles.title}>{title}</h2>
-            <div className={styles.headerAction}>{headerAction}</div>
-          </div>
-        ) : (
-          <h2 className={styles.title}>{title}</h2>
-        )}
-        {children && <div className={styles.body}>{children}</div>}
-        {footer && <div className={styles.footer}>{footer}</div>}
+          )}
+          {children && <div className={styles.body}>{children}</div>}
+          {footer && <div className={styles.footer}>{footer}</div>}
+        </div>
       </div>
     </div>
   );

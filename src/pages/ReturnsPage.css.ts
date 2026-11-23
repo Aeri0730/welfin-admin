@@ -61,6 +61,7 @@ export const previewList = style({
   flexDirection: 'column',
   maxHeight: 360,
   overflowY: 'auto',
+  clipPath: `inset(0 round ${vars.radius.md})`,
   borderRadius: vars.radius.md,
   border: `1px solid ${vars.color.grey100}`,
 });
@@ -372,4 +373,35 @@ export const dupChoices = style({
   flexWrap: 'wrap',
   gap: 6,
   marginTop: 4,
+});
+
+/* ---------- 입력 형식 안내 (툴팁 안) ---------- */
+export const pasteHead = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginBottom: 6,
+});
+
+export const pasteLabel = style({ fontSize: 14, fontWeight: 600, color: vars.color.grey700 });
+
+export const formatGroup = style({
+  selectors: { '& + &': { marginTop: 12 } },
+});
+
+export const formatTitle = style({ fontSize: 12, fontWeight: 700, color: vars.color.grey400, marginBottom: 4 });
+
+export const formatRow = style({ display: 'flex', gap: 10, alignItems: 'baseline' });
+
+export const formatSite = style({ flexShrink: 0, width: 64, fontWeight: 700 });
+
+export const formatCols = style({ color: vars.color.grey200, wordBreak: 'keep-all' });
+
+/** 회수 건 모달 제목: 이름 · 관리번호 + 접수처 칩 */
+export const dialogTitle = style({
+  display: 'inline-flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 8,
 });

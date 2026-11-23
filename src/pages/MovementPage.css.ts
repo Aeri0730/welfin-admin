@@ -1,11 +1,17 @@
 import { globalStyle, style } from '@vanilla-extract/css';
 import { media, vars } from '@/styles/theme.css';
 
+/** 입고·출고 화면 전체: 데스크톱에서 가운데로 (입력·현황 전환 시 위치가 안 흔들리게 같이 씀) */
+export const page = style({
+  width: '100%',
+  maxWidth: 720,
+  marginInline: 'auto',
+});
+
 export const form = style({
   display: 'flex',
   flexDirection: 'column',
   gap: 12,
-  maxWidth: 720,
   '@media': {
     [media.desktop]: { gap: 16 },
   },
@@ -117,3 +123,65 @@ globalStyle(`${itemRow} > :first-child`, {
   gridColumn: '1 / -1',
   '@media': { [media.tablet]: { gridColumn: 'auto' } },
 });
+
+/** 입력 | 현황 탭 (모든 화면 크기에서 보임) */
+export const subTabs = style({
+  display: 'flex',
+  gap: 4,
+  marginBottom: 16,
+  borderBottom: `1px solid ${vars.color.grey200}`,
+});
+
+export const subTab = style({
+  padding: '10px 14px',
+  fontSize: 15,
+  fontWeight: 600,
+  color: vars.color.grey500,
+  borderBottom: '2px solid transparent',
+  marginBottom: -1,
+  selectors: {
+    '&.active': { color: vars.color.grey900, borderBottomColor: vars.color.grey900 },
+  },
+});
+
+export const scheduleBox = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  marginTop: 14,
+  padding: 12,
+  borderRadius: vars.radius.md,
+  background: vars.color.grey100,
+});
+
+export const checkRow = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  fontSize: 15,
+  fontWeight: 600,
+  cursor: 'pointer',
+});
+
+/* ---------- 현황: 묶음 안 제품 줄 (눌러서 수정) ---------- */
+export const rowActions = style({ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 });
+
+export const batchItems = style({ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 8 });
+
+export const batchItem = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  width: '100%',
+  padding: '6px 10px',
+  borderRadius: vars.radius.sm,
+  fontSize: 14,
+  color: vars.color.grey700,
+  background: vars.color.grey50,
+  textAlign: 'left',
+  transition: 'background 0.15s ease',
+  ':hover': { background: vars.color.grey100, color: vars.color.grey900 },
+});
+
+export const batchName = style({ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const batchQty = style({ fontWeight: 600, fontVariantNumeric: 'tabular-nums' });

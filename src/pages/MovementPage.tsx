@@ -3,12 +3,14 @@ import { NavLink } from 'react-router';
 import { useCreateMovements, usePartners, useProducts, useStock, useWarehouses } from '@/api/queries';
 import type { CreateMovementsInput, Warehouse } from '@/api/types';
 import { Button } from '@/components/Button';
+import { Dialog } from '@/components/Dialog';
 import { SelectField, TextAreaField, TextField } from '@/components/Field';
 import { Icon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { Card, ErrorBox, PageHeader } from '@/components/ui';
 import * as fieldStyles from '@/components/Field.css';
-import { formatNumber, today } from '@/lib/format';
+import { formatSchedule } from '@/features/inventory/movement';
+import { addDays, formatNumber, today } from '@/lib/format';
 import * as styles from './MovementPage.css';
 
 export type MovementFormType = 'inbound' | 'outbound' | 'transfer';
@@ -60,6 +62,21 @@ interface ItemDraft {
   quantity: string;
 }
 
+/** 입고·출고 안의 '입력 | 현황' 탭 */
+export function MovementSubTabs({ type }: { type: 'inbound' | 'outbound' }) {
+  const verb = CONFIG[type].verb;
+  return (
+    <nav className={styles.subTabs} aria-label={`${verb} 메뉴`}>
+      <NavLink to={`/${type}`} end className={styles.subTab}>
+        {verb} 입력
+      </NavLink>
+      <NavLink to={`/${type}/status`} className={styles.subTab}>
+        {verb} 현황
+      </NavLink>
+    </nav>
+  );
+}
+
 function pickDefault(warehouses: Warehouse[], code?: string): string {
   const match = code ? warehouses.find((w) => w.code === code) : undefined;
   return String((match ?? warehouses[0])?.id ?? '');
@@ -85,6 +102,14 @@ export function MovementPage({ type }: { type: MovementFormType }) {
   const [memo, setMemo] = useState('');
   const [items, setItems] = useState<ItemDraft[]>(() => [newItem()]);
   const [submitted, setSubmitted] = useState(false);
+  /** 예정으로 등록: 정한 시각 이후에 재고에 반영 */
+  const [scheduled, setScheduled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState(() => `${addDays(today(), 1)}T09:00`);
+  /** 재고 부족 확인 모달: 부족한 제품 목록 (서버에서만 알게 된 경우 message) */
+  const [shortage, setShortage] = useState<{
+    lines: Array<{ name: string; stock: number; quantity: number }>;
+    message?: string;
+  } | null>(null);
 
   // 창고 목록을 받으면 기본 창고를 채워둔다
   useEffect(() => {
@@ -118,6 +143,7 @@ export function MovementPage({ type }: { type: MovementFormType }) {
     if (config.needsTo && !toId) return '도착 창고를 선택해주세요';
     if (config.needsFrom && config.needsTo && fromId === toId) return '출발 창고와 도착 창고가 같아요';
     if (config.needsPartner && !partnerId) return '매입처를 선택해주세요';
+    if (scheduled && !(new Date(scheduledAt).getTime() > Date.now())) return '예정 시각은 지금보다 뒤여야 해요';
     if (filledItems.length === 0) return '제품을 하나 이상 입력해주세요';
     if (filledItems.some((item) => !item.productId)) return '제품을 선택해주세요';
     if (filledItems.some((item) => !(Number(item.quantity) > 0))) return '수량을 1개 이상 입력해주세요';
@@ -134,14 +160,34 @@ export function MovementPage({ type }: { type: MovementFormType }) {
     setItems((prev) => (prev.length === 1 ? [newItem()] : prev.filter((item) => item.key !== key)));
   };
 
+  /** 출발 창고 재고보다 많이 빠지는 줄 */
+  const shortLines = config.needsFrom
+    ? filledItems.flatMap((item) => {
+        const stock = fromStock.get(Number(item.productId)) ?? 0;
+        const quantity = Number(item.quantity);
+        if (!(quantity > stock)) return [];
+        const product = activeProducts.find((p) => p.id === Number(item.productId));
+        return [{ name: product?.name ?? '제품', stock, quantity }];
+      })
+    : [];
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
     if (validationError) return;
+    // 예정 건은 반영 시점의 재고를 알 수 없어서 확인 없이 저장
+    if (!scheduled && shortLines.length > 0) {
+      setShortage({ lines: shortLines });
+      return;
+    }
+    save(false);
+  };
 
+  const save = (allowNegative: boolean) => {
     const input: CreateMovementsInput = {
       type,
-      movedOn,
+      movedOn: scheduled ? scheduledAt.slice(0, 10) : movedOn,
+      scheduledAt: scheduled ? new Date(scheduledAt).toISOString() : null,
       fromWarehouseId: config.needsFrom ? Number(fromId) : null,
       toWarehouseId: config.needsTo ? Number(toId) : null,
       partnerId: config.needsPartner ? Number(partnerId) : null,
@@ -150,14 +196,29 @@ export function MovementPage({ type }: { type: MovementFormType }) {
         productId: Number(item.productId),
         quantity: Number(item.quantity),
       })),
+      allowNegative,
     };
 
     createMovements.mutate(input, {
       onSuccess: () => {
-        toast(`${filledItems.length}종 ${formatNumber(totalQuantity)}개를 ${config.verb}했어요`);
+        setShortage(null);
+        toast(
+          scheduled
+            ? `${filledItems.length}종 ${formatNumber(totalQuantity)}개를 ${config.verb} 예정으로 등록했어요 (${formatSchedule(new Date(scheduledAt).toISOString())} 반영)`
+            : `${filledItems.length}종 ${formatNumber(totalQuantity)}개를 ${config.verb}했어요`,
+        );
         setItems([newItem()]);
         setMemo('');
         setSubmitted(false);
+      },
+      onError: (error) => {
+        // 화면 재고는 넉넉했는데 그 사이 다른 출고로 서버에서 부족해진 경우에도 확인을 받는다
+        if (!allowNegative && config.needsFrom && error.message.startsWith('재고가 부족해요')) {
+          createMovements.reset();
+          setShortage({ lines: [], message: error.message });
+        } else {
+          setShortage(null);
+        }
       },
     });
   };
@@ -169,7 +230,7 @@ export function MovementPage({ type }: { type: MovementFormType }) {
   ));
 
   return (
-    <div>
+    <div className={styles.page}>
       {type !== 'transfer' && (
         <nav className={styles.segment} aria-label="입고/출고 전환">
           <NavLink to="/inbound" className={styles.segmentItem}>
@@ -181,17 +242,29 @@ export function MovementPage({ type }: { type: MovementFormType }) {
         </nav>
       )}
       <PageHeader title={config.title} description={config.description} />
+      {type !== 'transfer' && <MovementSubTabs type={type} />}
 
       <form className={styles.form} onSubmit={handleSubmit} noValidate>
         <Card title="기본 정보">
           <div className={styles.fields}>
-            <TextField
-              label={type === 'outbound' ? '출고일' : '날짜'}
-              type="date"
-              value={movedOn}
-              max={today()}
-              onChange={(e) => e.target.value && setMovedOn(e.target.value)}
-            />
+            {scheduled ? (
+              <TextField
+                label={`${config.verb} 예정 시각`}
+                type="datetime-local"
+                value={scheduledAt}
+                min={`${today()}T00:00`}
+                onChange={(e) => e.target.value && setScheduledAt(e.target.value)}
+                hint="이 시각이 지나면 재고에 반영돼요"
+              />
+            ) : (
+              <TextField
+                label={type === 'outbound' ? '출고일' : '날짜'}
+                type="date"
+                value={movedOn}
+                max={today()}
+                onChange={(e) => e.target.value && setMovedOn(e.target.value)}
+              />
+            )}
             {config.needsPartner && (
               <SelectField label="매입처" value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
                 <option value="">선택해주세요</option>
@@ -221,6 +294,17 @@ export function MovementPage({ type }: { type: MovementFormType }) {
                 <option value="">선택해주세요</option>
                 {warehouseOptions}
               </SelectField>
+            )}
+          </div>
+          <div className={styles.scheduleBox}>
+            <label className={styles.checkRow}>
+              <input type="checkbox" checked={scheduled} onChange={(e) => setScheduled(e.target.checked)} />
+              아직 {config.verb}되지 않은 예정 건이에요
+            </label>
+            {scheduled && (
+              <p className={fieldStyles.message}>
+                예정 시각 전까지는 재고에 더하거나 빼지 않고, 홈과 {config.verb} 현황에 &lsquo;{config.verb} 예정&rsquo;으로 보여요.
+              </p>
             )}
           </div>
           {products.data && activeProducts.length === 0 && (
@@ -317,10 +401,42 @@ export function MovementPage({ type }: { type: MovementFormType }) {
             loading={createMovements.isPending}
             disabled={filledItems.length === 0}
           >
-            {config.verb} 등록
+            {scheduled ? `${config.verb} 예정 등록` : `${config.verb} 등록`}
           </Button>
         </div>
       </form>
+
+      <Dialog
+        open={shortage !== null}
+        onClose={() => !createMovements.isPending && setShortage(null)}
+        title={`재고가 부족한데 ${config.verb}할까요?`}
+        footer={
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="weak" onClick={() => setShortage(null)} disabled={createMovements.isPending}>
+              아니요
+            </Button>
+            <Button onClick={() => save(true)} loading={createMovements.isPending}>
+              네, {config.verb}할게요
+            </Button>
+          </>
+        }
+      >
+        {shortage?.message && <p>{shortage.message}</p>}
+        {shortage && shortage.lines.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+            {shortage.lines.map((line) => (
+              <li key={line.name}>
+                {line.name}: 재고 {formatNumber(line.stock)}개 · {config.verb} {formatNumber(line.quantity)}개 →{' '}
+                <strong>{formatNumber(line.stock - line.quantity)}개</strong>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p style={{ marginTop: 12 }}>
+          {config.verb}하면 재고가 마이너스로 남아요. 나중에 입고나 재고 조정으로 맞춰주세요.
+        </p>
+      </Dialog>
     </div>
   );
 }

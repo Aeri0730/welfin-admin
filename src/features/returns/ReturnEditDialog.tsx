@@ -2,22 +2,30 @@ import { useState } from 'react';
 import { useDeleteReturn, useUpdateReturns } from '@/api/queries';
 import {
   CARRIER_LABEL,
+  isKnownChannel,
   RETURN_CHANNEL_LABEL,
   RETURN_KIND_LABEL,
   returnChannel,
   RETURN_STATUS_LABEL,
   type Carrier,
+  type ReturnChannel,
   type ReturnItem,
   type ReturnKind,
   type ReturnStatus,
 } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
+import { Dropdown, type DropdownOption } from '@/components/Dropdown';
 import { SelectField, TextAreaField, TextField } from '@/components/Field';
 import { useToast } from '@/components/Toast';
 import { ErrorBox } from '@/components/ui';
 import { digits, formatPhone } from './parse';
 import * as s from '@/pages/ReturnsPage.css';
+
+const CHANNEL_OPTIONS: Array<DropdownOption<ReturnChannel>> = [
+  { value: 'starpack', label: RETURN_CHANNEL_LABEL.starpack },
+  { value: 'ezadmin', label: RETURN_CHANNEL_LABEL.ezadmin },
+];
 
 export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose: () => void }) {
   const toast = useToast();
@@ -35,6 +43,9 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
   const [invoiceNo, setInvoiceNo] = useState(item.invoiceNo ?? '');
   const [status, setStatus] = useState<ReturnStatus>(item.status);
   const [memo, setMemo] = useState(item.memo ?? '');
+  /** 접수처는 고르는 즉시 저장 (양품화처럼) */
+  const [channel, setChannel] = useState(returnChannel(item));
+  const channelSave = useUpdateReturns();
   const [rerequestCount, setRerequestCount] = useState(String(item.rerequestCount + 1));
   const [confirmDelete, setConfirmDelete] = useState(false);
   /** 양품화는 누르는 즉시 저장 (다른 칸 저장과 별개) */
@@ -47,6 +58,15 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
     restock.mutate([{ current: item, patch: { restocked: next } }], {
       onSuccess: () => toast(next ? '양품화로 표시했어요' : '양품화 표시를 지웠어요'),
       onError: () => setRestocked(!next),
+    });
+  };
+
+  const changeChannel = (next: string) => {
+    const prev = channel;
+    setChannel(next);
+    channelSave.mutate([{ current: item, patch: { channel: next } }], {
+      onSuccess: () => toast(`접수처를 ${isKnownChannel(next) ? RETURN_CHANNEL_LABEL[next] : next}(으)로 바꿨어요`),
+      onError: () => setChannel(prev),
     });
   };
 
@@ -101,7 +121,20 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
       open
       wide
       onClose={onClose}
-      title={`${item.recipient} 님 회수 건${item.mgmtNo ? ` · ${item.mgmtNo}` : ''} (${RETURN_CHANNEL_LABEL[returnChannel(item)]})`}
+      title={
+        <span className={s.dialogTitle}>
+          {item.recipient} 님 회수 건{item.mgmtNo ? ` · ${item.mgmtNo}` : ''}
+          <Dropdown
+            variant="chip"
+            tone={channel === 'ezadmin' ? 'blue' : channel === 'starpack' ? 'grey' : 'purple'}
+            ariaLabel="접수처"
+            value={channel}
+            options={CHANNEL_OPTIONS}
+            onChange={changeChannel}
+            custom={{ title: '직접 입력', placeholder: '예: 쿠팡, 자사몰', maxLength: 40 }}
+          />
+        </span>
+      }
       headerAction={
         <Button
           size="sm"
@@ -186,9 +219,9 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
       {restocked && item.restockedAt && (
         <p style={{ marginTop: 8, fontSize: 13 }}>양품화 처리 {item.restockedAt.slice(0, 10)}</p>
       )}
-      {(updateReturns.error || deleteReturn.error || restock.error) && (
+      {(updateReturns.error || deleteReturn.error || restock.error || channelSave.error) && (
         <div style={{ marginTop: 12 }}>
-          <ErrorBox error={updateReturns.error ?? deleteReturn.error ?? restock.error} />
+          <ErrorBox error={updateReturns.error ?? deleteReturn.error ?? restock.error ?? channelSave.error} />
         </div>
       )}
     </Dialog>

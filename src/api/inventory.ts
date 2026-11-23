@@ -174,19 +174,86 @@ interface MovementRow {
   to_warehouse: { id: number; name: string } | null;
   partner: { id: number; name: string } | null;
   creator: { name: string } | null;
+  scheduled_at: string | null;
+}
+
+const MOVEMENT_SELECT = `id, batch_id, type, moved_on, quantity, memo, created_at, scheduled_at,
+       product:products!inner(id, name, sku),
+       from_warehouse:warehouses!stock_movements_from_warehouse_id_fkey(id, name),
+       to_warehouse:warehouses!stock_movements_to_warehouse_id_fkey(id, name),
+       partner:partners(id, name),
+       creator:profiles!stock_movements_created_by_fkey(name)`;
+
+function toMovement(row: MovementRow): Movement {
+  return {
+    id: row.id,
+    batchId: row.batch_id,
+    type: row.type,
+    movedOn: row.moved_on,
+    quantity: row.quantity,
+    memo: row.memo,
+    createdAt: row.created_at,
+    product: row.product,
+    fromWarehouse: row.from_warehouse,
+    toWarehouse: row.to_warehouse,
+    partner: row.partner,
+    createdBy: row.creator?.name ?? '-',
+    scheduledAt: row.scheduled_at,
+  };
+}
+
+/** 아직 반영 전인 예정 입출고 (가까운 순) */
+export async function fetchPendingMovements(type?: MovementType): Promise<Movement[]> {
+  let query = supabase
+    .from('stock_movements')
+    .select(MOVEMENT_SELECT)
+    .gt('scheduled_at', new Date().toISOString())
+    .order('scheduled_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(500);
+  if (type) query = query.eq('type', type);
+  const { data, error } = await query;
+  if (error) throw toError(error);
+  return (data as unknown as MovementRow[]).map(toMovement);
+}
+
+/** 예정 묶음 취소 (반영 전만 가능) */
+export async function cancelScheduledMovements(batchId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('cancel_scheduled_movements', { p_batch_id: batchId });
+  if (error) throw toError(error);
+  return data as number;
+}
+
+export interface UpdateMovementInput {
+  id: number;
+  movedOn: string;
+  quantity: number;
+  memo: string;
+  /** 예정 건만: 새 예정 시각 (ISO) */
+  scheduledAt?: string | null;
+}
+
+/** 입출고 기록 한 줄 수정 (본인 등록 건 또는 관리자) */
+export async function updateMovement(input: UpdateMovementInput): Promise<void> {
+  const { error } = await supabase.rpc('update_movement', {
+    p_id: input.id,
+    p_moved_on: input.movedOn,
+    p_quantity: input.quantity,
+    p_memo: input.memo,
+    p_scheduled_at: input.scheduledAt ?? null,
+  });
+  if (error) throw toError(error);
+}
+
+export async function deleteMovement(id: number): Promise<void> {
+  const { error } = await supabase.rpc('delete_movement', { p_id: id });
+  if (error) throw toError(error);
 }
 
 export async function fetchMovements(filter: MovementFilter): Promise<Movement[]> {
   let query = supabase
     .from('stock_movements')
-    .select(
-      `id, batch_id, type, moved_on, quantity, memo, created_at,
-       product:products!inner(id, name, sku),
-       from_warehouse:warehouses!stock_movements_from_warehouse_id_fkey(id, name),
-       to_warehouse:warehouses!stock_movements_to_warehouse_id_fkey(id, name),
-       partner:partners(id, name),
-       creator:profiles!stock_movements_created_by_fkey(name)`,
-    )
+    .select(MOVEMENT_SELECT)
     .gte('moved_on', filter.from)
     .lte('moved_on', filter.to)
     .order('moved_on', { ascending: false })
@@ -203,20 +270,7 @@ export async function fetchMovements(filter: MovementFilter): Promise<Movement[]
   const { data, error } = await query;
   if (error) throw toError(error);
 
-  return (data as unknown as MovementRow[]).map((row) => ({
-    id: row.id,
-    batchId: row.batch_id,
-    type: row.type,
-    movedOn: row.moved_on,
-    quantity: row.quantity,
-    memo: row.memo,
-    createdAt: row.created_at,
-    product: row.product,
-    fromWarehouse: row.from_warehouse,
-    toWarehouse: row.to_warehouse,
-    partner: row.partner,
-    createdBy: row.creator?.name ?? '-',
-  }));
+  return (data as unknown as MovementRow[]).map(toMovement);
 }
 
 export async function createMovements(input: CreateMovementsInput): Promise<string> {
@@ -231,6 +285,8 @@ export async function createMovements(input: CreateMovementsInput): Promise<stri
       product_id: item.productId,
       quantity: item.quantity,
     })),
+    p_allow_negative: input.allowNegative ?? false,
+    p_scheduled_at: input.scheduledAt ?? null,
   });
   if (error) throw toError(error);
   return data as string;

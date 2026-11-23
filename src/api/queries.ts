@@ -1,10 +1,11 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as inventory from './inventory';
 import * as returns from './returns';
 import * as sales from './sales';
 import * as settlements from './settlements';
 import * as storage from './storage';
-import type { MovementFilter, SettlementKind } from './types';
+import type { MovementFilter, MovementType, SettlementKind } from './types';
 
 export const queryKeys = {
   warehouses: ['warehouses'] as const,
@@ -50,16 +51,51 @@ export function useMovements(filter: MovementFilter) {
   });
 }
 
-export function useCreateMovements() {
+/** 아직 반영 전인 예정 입출고 */
+export function usePendingMovements(type?: MovementType) {
+  return useQuery({
+    queryKey: ['movements', 'pending', type ?? 'all'] as const,
+    queryFn: () => inventory.fetchPendingMovements(type),
+  });
+}
+
+/** 입출고 기록이 바뀌면 재고·기록 화면을 다시 불러온다 (등록·수정·삭제·예정 취소 공통) */
+function useMovementMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: inventory.createMovements,
+    mutationFn,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['stock'] });
       void queryClient.invalidateQueries({ queryKey: ['movements'] });
     },
   });
 }
+
+export const useCancelScheduledMovements = () => useMovementMutation(inventory.cancelScheduledMovements);
+export const useUpdateMovement = () => useMovementMutation(inventory.updateMovement);
+export const useDeleteMovement = () => useMovementMutation(inventory.deleteMovement);
+
+/**
+ * 가장 가까운 예정 시각이 되면 재고·입출고 화면을 다시 불러온다.
+ * (DB 는 조회 시각 기준으로 계산하므로, 화면만 새로 고치면 반영된다)
+ */
+export function useScheduledRefresh() {
+  const queryClient = useQueryClient();
+  const pending = usePendingMovements();
+  const next = pending.data?.[0]?.scheduledAt;
+  useEffect(() => {
+    if (!next) return;
+    // setTimeout 최대치(약 24.8일)를 넘지 않게
+    const delay = Math.min(Math.max(new Date(next).getTime() - Date.now(), 0) + 1000, 2 ** 31 - 1);
+    const timer = window.setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: ['stock'] });
+      void queryClient.invalidateQueries({ queryKey: ['movements'] });
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [next, queryClient]);
+}
+
+export const useCreateMovements = () => useMovementMutation(inventory.createMovements);
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
