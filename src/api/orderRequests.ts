@@ -151,15 +151,17 @@ export async function saveOrderRequest(input: OrderRequestInput): Promise<void> 
   if (error) throw toError(error);
 }
 
-/** 발주 확인 체크 / 해제 (담당자만. 확인한 사람은 서버가 채운다) */
-export async function setOrderConfirmed({ id, confirmed }: { id: string; confirmed: boolean }): Promise<void> {
+/** 발주 확인 체크 / 해제. 여러 건을 한 번에 (담당자만. 확인한 사람은 서버가 채운다) */
+export async function setOrderConfirmed({ ids, confirmed }: { ids: string[]; confirmed: boolean }): Promise<number> {
+  if (ids.length === 0) return 0;
   const { data, error } = await supabase
     .from('order_requests')
     .update({ confirmed_at: confirmed ? new Date().toISOString() : null })
-    .eq('id', id)
+    .in('id', ids)
     .select('id');
   if (error) throw toError(error);
   if (!data?.length) throw new Error('바꾸지 못했어요. 권한을 확인해주세요');
+  return data.length;
 }
 
 export async function deleteOrderRequest(id: string): Promise<void> {

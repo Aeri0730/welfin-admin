@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { OrderRequest } from '@/api/orderRequests';
-import { useOrderRequests } from '@/api/queries';
+import { useOrderRequests, useSetOrderConfirmed } from '@/api/queries';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
+import { useToast } from '@/components/Toast';
 import { Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
 import { ConfirmChip } from '@/features/orders/ConfirmChip';
@@ -50,6 +51,18 @@ export function OrderRequestsPage() {
   const rows = query.data ?? [];
   const totalQty = rows.reduce((sum, o) => sum + o.quantity, 0);
   const confirmedCount = rows.filter((o) => o.confirmedAt !== null).length;
+  const pendingIds = rows.filter((o) => o.confirmedAt === null).map((o) => o.id);
+
+  const toast = useToast();
+  const confirmAll = useSetOrderConfirmed();
+  const handleConfirmAll = () =>
+    confirmAll.mutate(
+      { ids: pendingIds, confirmed: true },
+      {
+        onSuccess: (count) => toast(`${count}건을 확인했어요`),
+        onError: (error) => toast(error.message),
+      },
+    );
 
   const handleDownload = () => downloadCsv(`발주신청_${date}.csv`, EXCEL_HEADER, rows.map(toExcelRow));
 
@@ -83,6 +96,12 @@ export function OrderRequestsPage() {
               수량 {formatNumber(totalQty)}개 · 확인 {confirmedCount}/{rows.length}
             </span>
           </h2>
+          {canConfirm && pendingIds.length > 0 && (
+            <Button variant="weak" size="sm" onClick={handleConfirmAll} loading={confirmAll.isPending}>
+              <Icon name="check" size={16} />
+              전체 확인 처리하기 ({pendingIds.length}건)
+            </Button>
+          )}
         </div>
 
         {query.isLoading ? (

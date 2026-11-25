@@ -54,7 +54,7 @@ export function ConfirmChip({
       onClick={(e) => {
         e.stopPropagation();
         setConfirmed.mutate(
-          { id: order.id, confirmed: !confirmed },
+          { ids: [order.id], confirmed: !confirmed },
           { onError: (error) => toast(error.message) },
         );
       }}
