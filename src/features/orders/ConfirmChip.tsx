@@ -7,7 +7,16 @@ import { formatDateTime } from '@/lib/format';
 import * as s from './orders.css';
 
 /** 발주 확인 칩. 담당자(canConfirm)만 눌러서 확인 / 해제한다 */
-export function ConfirmChip({ order, canConfirm }: { order: OrderRequest; canConfirm: boolean }) {
+export function ConfirmChip({
+  order,
+  canConfirm,
+  noConfirmReason,
+}: {
+  order: OrderRequest;
+  canConfirm: boolean;
+  /** 권한이 없을 때 눌렀을 때 알려줄 이유 */
+  noConfirmReason: string;
+}) {
   const toast = useToast();
   const setConfirmed = useSetOrderConfirmed();
   const confirmed = order.confirmedAt !== null;
@@ -18,10 +27,19 @@ export function ConfirmChip({ order, canConfirm }: { order: OrderRequest; canCon
 
   if (!canConfirm) {
     return (
-      <span className={s.chip[confirmed ? 'confirmed' : 'pending']} title={title}>
+      <button
+        type="button"
+        className={s.chip[confirmed ? 'confirmed' : 'pending']}
+        title={title}
+        // 줄 클릭(수정 모달)으로 넘기지 않고, 왜 못 바꾸는지 알려준다
+        onClick={(e) => {
+          e.stopPropagation();
+          toast(noConfirmReason);
+        }}
+      >
         {confirmed && <Icon name="check" size={14} />}
         {label}
-      </span>
+      </button>
     );
   }
 

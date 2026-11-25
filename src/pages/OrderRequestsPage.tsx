@@ -39,7 +39,13 @@ export function OrderRequestsPage() {
   const date = today();
   const query = useOrderRequests(date);
   const [editing, setEditing] = useState<OrderRequest | 'new' | null>(null);
-  const canConfirm = useProfile().data?.canConfirmOrders ?? false;
+  const profile = useProfile().data;
+  const canConfirm = profile?.canConfirmOrders === true;
+  /** 확인 권한이 없을 때 칩을 누르면 보여줄 이유 */
+  const noConfirmReason =
+    profile?.canConfirmOrders === null
+      ? '발주 확인 칸이 아직 없어요. supabase/migrations/0028_order_confirm.sql 을 실행해주세요'
+      : `발주 확인은 김다영·박애리만 할 수 있어요 (지금 로그인: ${profile?.name ?? '-'})`;
 
   const rows = query.data ?? [];
   const totalQty = rows.reduce((sum, o) => sum + o.quantity, 0);
@@ -109,7 +115,7 @@ export function OrderRequestsPage() {
                   {rows.map((o) => (
                     <tr key={o.id} className={s.clickRow} onClick={() => setEditing(o)}>
                       <td className={p.td}>
-                        <ConfirmChip order={o} canConfirm={canConfirm} />
+                        <ConfirmChip order={o} canConfirm={canConfirm} noConfirmReason={noConfirmReason} />
                       </td>
                       <td className={p.td} title={o.id}>
                         <span className={s.code}>{shortId(o.id)}</span>
@@ -153,7 +159,7 @@ export function OrderRequestsPage() {
                     {o.invoiceNo && <p className={p.listMeta}>송장 {o.invoiceNo}</p>}
                   </div>
                   <div className={p.listRight} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                    <ConfirmChip order={o} canConfirm={canConfirm} />
+                    <ConfirmChip order={o} canConfirm={canConfirm} noConfirmReason={noConfirmReason} />
                     {formatNumber(o.quantity)}개
                   </div>
                 </li>

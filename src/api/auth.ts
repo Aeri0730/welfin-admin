@@ -39,5 +39,5 @@ export async function fetchProfile(userId: string): Promise<Profile> {
   if (result.error?.code === '42703') result = await load('id, name, role');
   if (result.error) throw result.error;
   const row = result.data;
-  return { id: row.id, name: row.name, role: row.role, canConfirmOrders: row.can_confirm_orders ?? false };
+  return { id: row.id, name: row.name, role: row.role, canConfirmOrders: row.can_confirm_orders ?? null };
 }
