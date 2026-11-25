@@ -260,6 +260,7 @@ function DispatchDialog({ item, onClose }: { item: Dispatch | null; onClose: () 
   return (
     <Dialog
       open
+      wide
       onClose={onClose}
       title={item ? '배차 수정' : '배차 추가'}
       footer={
@@ -305,6 +306,7 @@ function DispatchDialog({ item, onClose }: { item: Dispatch | null; onClose: () 
                 aria-label={`상품 ${index + 1} 수량`}
                 placeholder="수량"
                 inputMode="numeric"
+                className={s.qtyInput}
                 value={money(row.quantity)}
                 onChange={(e) => setItem(index, { quantity: digits(e.target.value) })}
               />

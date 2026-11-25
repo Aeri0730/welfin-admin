@@ -64,7 +64,7 @@ export const itemList = style({ gridColumn: '1 / -1', display: 'flex', flexDirec
 /** 제품 | 수량 | 빼기 */
 export const itemRow = style({
   display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 96px 36px',
+  gridTemplateColumns: 'minmax(0, 1fr) 48px 36px',
   gap: 8,
   alignItems: 'center',
 });
@@ -86,8 +86,14 @@ export const itemRemove = style({
   },
 });
 
-export const itemLine = style({ display: 'block' });
+/** 제품 한 줄은 중간에 줄바꿈하지 않는다 (예: 'GSI-R1429SKD 고스 보텍스 3구 BLDC 타워 냉풍기') */
+export const itemLine = style({ display: 'block', whiteSpace: 'nowrap' });
 
 
 /** 배차비 표 제품 칸 (기본 줄바꿈 칸 120px 의 1.5배) */
 export const productCell = style({ minWidth: 180 });
+
+/** 배차 모달 상품 수량칸 (48px 라 안쪽 여백을 줄이고 가운데 정렬) */
+export const qtyInput = style({
+  selectors: { 'input&': { padding: '0 4px', textAlign: 'center' } },
+});
