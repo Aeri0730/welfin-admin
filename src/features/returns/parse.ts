@@ -12,6 +12,7 @@
  *
  * 송장 줄에 '롯데' / '직접' 이 들어 있으면 그 택배사로, 없으면 기본 택배사로 등록한다.
  */
+import { currentInvoice } from '@/api/returns';
 import type { Carrier, NewReturnInput, Product, ReturnItem, ReturnKind, ReturnPatch } from '@/api/types';
 
 export type InputMode = 'auto' | 'intake' | 'invoice' | 'kind' | 'inspect';
@@ -319,7 +320,12 @@ function planInspect(text: string, existing: ReturnItem[]): PlanRow[] {
         continue;
       }
       seen.set(invoiceNo, no);
-      const matches = existing.filter((r) => r.invoiceNo && digits(r.invoiceNo) === invoiceNo);
+      // 재접수 전 송장으로 찍어도 찾는다
+      const matches = existing.filter(
+        (r) =>
+          (r.invoiceNo && digits(r.invoiceNo) === invoiceNo) ||
+          r.previousInvoices.some((i) => digits(i.invoiceNo) === invoiceNo),
+      );
       if (matches.length === 0) {
         rows.push({ status: 'error', lineNo: no, raw: label, message: `송장 ${invoiceNo} 회수 건이 없어요` });
         continue;
@@ -549,14 +555,23 @@ export function planPaste(text: string, options: PasteOptions): PlanRow[] {
       rows.push({ status: 'skip', lineNo, raw, message: '이미 같은 송장이 등록돼 있어요' });
       return;
     }
-    const changed = target.invoiceNo && target.invoiceNo !== invoiceNo;
+    if (target.previousInvoices.some((i) => i.invoiceNo === invoiceNo)) {
+      rows.push({ status: 'skip', lineNo, raw, message: '재접수 전 송장으로 이미 등록돼 있어요' });
+      return;
+    }
+    // 재접수로 송장이 새로 나왔으면 기존 송장은 지우지 않고 아래로 쌓는다
+    const current = target.invoiceNo !== invoiceNo ? currentInvoice(target) : null;
+    const patch: ReturnPatch = current
+      ? { invoiceNo, carrier, previousInvoices: [current, ...target.previousInvoices] }
+      : { invoiceNo, carrier };
     pushUpdate(
       lineNo,
       raw,
       target,
       `송장 ${invoiceNo}`,
-      { invoiceNo, carrier },
-      [warning, changed ? `기존 송장 ${target.invoiceNo} 를 바꿔요` : undefined].filter(Boolean).join(' · ') || undefined,
+      patch,
+      [warning, current ? `기존 송장 ${current.invoiceNo} 는 이전 송장으로 남겨요` : undefined].filter(Boolean).join(' · ') ||
+        undefined,
     );
   }
 }

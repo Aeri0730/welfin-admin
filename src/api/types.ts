@@ -24,6 +24,14 @@ export interface Partner {
   isActive: boolean;
 }
 
+/** 판매처 (쿠팡, 스마트스토어 등). 출고 때 고른다 */
+export interface SalesChannel {
+  id: number;
+  name: string;
+  memo: string | null;
+  isActive: boolean;
+}
+
 /** 제품 사용 계절 */
 export type ProductCategory = 'winter' | 'summer' | 'etc';
 
@@ -83,6 +91,8 @@ export interface Movement {
   fromWarehouse: { id: number; name: string } | null;
   toWarehouse: { id: number; name: string } | null;
   partner: { id: number; name: string } | null;
+  /** 출고한 판매처 (고르지 않았으면 null) */
+  salesChannel: { id: number; name: string } | null;
   createdBy: string;
   /** 예정 시각 (비어 있으면 즉시 반영된 기록) */
   scheduledAt: string | null;
@@ -105,6 +115,8 @@ export interface CreateMovementsInput {
   fromWarehouseId: number | null;
   toWarehouseId: number | null;
   partnerId: number | null;
+  /** 출고 판매처 (선택) */
+  salesChannelId?: number | null;
   memo: string;
   items: Array<{ productId: number; quantity: number }>;
   /** 재고가 부족해도 저장 (사용자가 확인 모달에서 '네' 를 누른 경우) */
@@ -192,6 +204,21 @@ export interface TrackingEvent {
   description: string | null;
 }
 
+/** 회수 반송장 한 개 (배송조회 결과 포함) */
+export interface ReturnInvoice {
+  carrier: Carrier | null;
+  invoiceNo: string;
+  enteredAt: string | null;
+  tracking: {
+    code: string | null;
+    label: string | null;
+    location: string | null;
+    time: string | null;
+    checkedAt: string | null;
+    error: string | null;
+  };
+}
+
 export interface ReturnItem {
   id: number;
   receivedOn: string;
@@ -230,6 +257,10 @@ export interface ReturnItem {
   restockedAt: string | null;
   /** 직접 지정한 접수처 (null 이면 관리번호 유무로 판단) */
   channel: string | null;
+  /** 원송장번호 (처음 보낸 출고 송장, 참고용) */
+  originalInvoiceNo: string | null;
+  /** 재접수 전에 쓰던 반송장들 (최근 것이 앞). 지금 송장은 invoiceNo·tracking */
+  previousInvoices: ReturnInvoice[];
   createdAt: string;
 }
 
@@ -267,6 +298,9 @@ export interface ReturnPatch {
   restocked?: boolean;
   /** null = 관리번호 유무로 자동 판단 */
   channel?: string | null;
+  originalInvoiceNo?: string | null;
+  /** 이전 반송장 목록 통째로 바꾸기 (재접수로 새 송장이 나오면 지금 송장을 앞에 넣어서 보낸다) */
+  previousInvoices?: ReturnInvoice[];
 }
 
 /* ---------- 매출 ---------- */
@@ -395,13 +429,23 @@ export const settlementTotal = (s: Settlement) => s.totalAmount ?? settlementAut
 export const settlementRemaining = (s: Settlement) => settlementTotal(s) - s.receivedAmount;
 
 /** 스타팩 불량 제품 반품 · 배차비 */
+/** 배차 1건에 실린 상품 한 줄 */
+export interface DispatchItem {
+  productText: string;
+  quantity: number;
+}
+
 export interface Dispatch {
   id: number;
   requestedOn: string | null;
   shippedOn: string | null;
   partner: string;
+  /** 상품 이름 모음 (검색·엑셀용 요약) */
   productText: string;
+  /** 수량 합계 */
   quantity: number;
+  /** 실린 상품들 (예전 건은 productText·quantity 한 줄) */
+  items: DispatchItem[];
   vehicleNo: string | null;
   vehicleType: string | null;
   /** 운임 (VAT 별도) */
@@ -409,4 +453,4 @@ export interface Dispatch {
   memo: string | null;
 }
 
-export type DispatchInput = Omit<Dispatch, 'id'> & { id?: number };
+export type DispatchInput = Omit<Dispatch, 'id' | 'productText' | 'quantity'> & { id?: number };

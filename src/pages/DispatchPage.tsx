@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDeleteDispatch, useDispatches, useSaveDispatch } from '@/api/queries';
-import type { Dispatch } from '@/api/types';
+import type { Dispatch, DispatchItem } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
 import { TextField } from '@/components/Field';
@@ -12,6 +12,27 @@ import { downloadCsv } from '@/lib/csv';
 import { formatDateLabel, formatNumber, today } from '@/lib/format';
 import * as p from './pages.css';
 import * as s from './SettlementPage.css';
+
+/** 목록 한 줄 요약: 'A 10개' 또는 'A 외 2종 · 25개' */
+function summarize(d: Dispatch) {
+  const [first] = d.items;
+  if (d.items.length <= 1) return `${first?.productText ?? d.productText} ${formatNumber(d.quantity)}개`;
+  return `${first.productText} 외 ${d.items.length - 1}종 · ${formatNumber(d.quantity)}개`;
+}
+
+/** 표의 제품 칸: 상품이 여러 개면 줄마다 '이름 × 수량' */
+function DispatchProducts({ items }: { items: DispatchItem[] }) {
+  if (items.length <= 1) return <>{items[0]?.productText}</>;
+  return (
+    <>
+      {items.map((i, index) => (
+        <span key={index} className={s.itemLine}>
+          {i.productText} × {formatNumber(i.quantity)}
+        </span>
+      ))}
+    </>
+  );
+}
 
 /** 스타팩 불량 제품 반품 정보 및 배차비 */
 export function DispatchPage() {
@@ -33,7 +54,7 @@ export function DispatchPage() {
     downloadCsv(
       `배차비_${month || today()}.csv`,
       ['출고 요청 날짜', '실 출고 날짜', '거래처', '제품', '수량', '차량번호', '적재량', '운임(VAT 별도)', '메모'],
-      rows.map((d) => [d.requestedOn ?? '', d.shippedOn ?? '', d.partner, d.productText, d.quantity, d.vehicleNo ?? '', d.vehicleType ?? '', d.fare, d.memo ?? '']),
+      rows.map((d) => [d.requestedOn ?? '', d.shippedOn ?? '', d.partner, d.items.map((i) => `${i.productText} × ${i.quantity}`).join(' / '), d.quantity, d.vehicleNo ?? '', d.vehicleType ?? '', d.fare, d.memo ?? '']),
     );
 
   return (
@@ -125,7 +146,7 @@ export function DispatchPage() {
                       <td className={cx(p.td, s.nowrap)}>{d.shippedOn ? formatDateLabel(d.shippedOn) : '-'}</td>
                       <td className={cx(p.td, p.strong)}>{d.partner}</td>
                       <td className={cx(p.td, p.wrapCell)}>
-                        {d.productText}
+                        <DispatchProducts items={d.items} />
                         {d.memo && <span className={s.sub}>{d.memo}</span>}
                       </td>
                       <td className={cx(p.td, p.num)}>{formatNumber(d.quantity)}</td>
@@ -144,7 +165,7 @@ export function DispatchPage() {
                   <div className={p.listMain}>
                     <p className={p.listTitle}>{d.partner}</p>
                     <p className={p.listMeta}>
-                      {d.shippedOn ? formatDateLabel(d.shippedOn) : '출고 전'} · {d.productText} {formatNumber(d.quantity)}개
+                      {d.shippedOn ? formatDateLabel(d.shippedOn) : '출고 전'} · {summarize(d)}
                     </p>
                     <p className={p.listMeta}>{[d.vehicleNo, d.vehicleType].filter(Boolean).join(' · ')}</p>
                   </div>
@@ -174,8 +195,6 @@ function DispatchDialog({ item, onClose }: { item: Dispatch | null; onClose: () 
     requestedOn: item?.requestedOn ?? today(),
     shippedOn: item?.shippedOn ?? '',
     partner: item?.partner ?? '',
-    productText: item?.productText ?? '',
-    quantity: item ? String(item.quantity) : '',
     vehicleNo: item?.vehicleNo ?? '',
     vehicleType: item?.vehicleType ?? '',
     fare: item ? String(item.fare) : '',
@@ -183,8 +202,22 @@ function DispatchDialog({ item, onClose }: { item: Dispatch | null; onClose: () 
   });
   const set = (key: keyof typeof f, value: string) => setF((prev) => ({ ...prev, [key]: value }));
 
+  /** 상품 줄 (수량은 입력 중 문자열) */
+  const [items, setItems] = useState<Array<{ productText: string; quantity: string }>>(
+    item?.items.length
+      ? item.items.map((i) => ({ productText: i.productText, quantity: String(i.quantity) }))
+      : [{ productText: '', quantity: '' }],
+  );
+  const setItem = (index: number, patch: Partial<{ productText: string; quantity: string }>) =>
+    setItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const addItem = () => setItems((prev) => [...prev, { productText: '', quantity: '' }]);
+  const removeItem = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index));
+
+  const filled = items.filter((i) => i.productText.trim());
+  const totalQty = filled.reduce((sum, i) => sum + Number(i.quantity || 0), 0);
+
   const handleSave = () => {
-    if (!f.partner.trim() || !f.productText.trim()) {
+    if (!f.partner.trim() || filled.length === 0) {
       setError('거래처와 제품을 적어주세요');
       return;
     }
@@ -195,8 +228,7 @@ function DispatchDialog({ item, onClose }: { item: Dispatch | null; onClose: () 
         requestedOn: f.requestedOn || null,
         shippedOn: f.shippedOn || null,
         partner: f.partner,
-        productText: f.productText,
-        quantity: Number(f.quantity || 0),
+        items: filled.map((i) => ({ productText: i.productText, quantity: Number(i.quantity || 0) })),
         vehicleNo: f.vehicleNo,
         vehicleType: f.vehicleType,
         fare: Number(f.fare || 0),
@@ -251,8 +283,44 @@ function DispatchDialog({ item, onClose }: { item: Dispatch | null; onClose: () 
         <TextField label="출고 요청 날짜" type="date" value={f.requestedOn} onChange={(e) => set('requestedOn', e.target.value)} />
         <TextField label="실 출고 날짜" type="date" value={f.shippedOn} onChange={(e) => set('shippedOn', e.target.value)} />
         <TextField label="거래처" placeholder="양일상사" value={f.partner} onChange={(e) => set('partner', e.target.value)} />
-        <TextField label="제품" placeholder="WELFIN-009 웰핀 에어팬" value={f.productText} onChange={(e) => set('productText', e.target.value)} containerClassName={s.full} />
-        <TextField label="수량" inputMode="numeric" value={money(f.quantity)} onChange={(e) => set('quantity', digits(e.target.value))} />
+
+        <div className={s.itemsHead}>
+          <span>상품{filled.length > 1 && ` ${filled.length}종 · 합계 ${formatNumber(totalQty)}개`}</span>
+          <Button size="sm" variant="weak" onClick={addItem}>
+            <Icon name="plus" size={14} />
+            상품 추가
+          </Button>
+        </div>
+        <div className={s.itemList}>
+          {items.map((row, index) => (
+            <div key={index} className={s.itemRow}>
+              <TextField
+                aria-label={`상품 ${index + 1}`}
+                placeholder="WELFIN-009 웰핀 에어팬"
+                value={row.productText}
+                autoFocus={index > 0 && index === items.length - 1 && !row.productText}
+                onChange={(e) => setItem(index, { productText: e.target.value })}
+              />
+              <TextField
+                aria-label={`상품 ${index + 1} 수량`}
+                placeholder="수량"
+                inputMode="numeric"
+                value={money(row.quantity)}
+                onChange={(e) => setItem(index, { quantity: digits(e.target.value) })}
+              />
+              <button
+                type="button"
+                className={s.itemRemove}
+                aria-label={`상품 ${index + 1} 빼기`}
+                disabled={items.length === 1}
+                onClick={() => removeItem(index)}
+              >
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+          ))}
+        </div>
+
         <TextField label="차량번호" placeholder="경기80아1929" value={f.vehicleNo} onChange={(e) => set('vehicleNo', e.target.value)} />
         <TextField label="적재량" placeholder="화성 1T" value={f.vehicleType} onChange={(e) => set('vehicleType', e.target.value)} />
         <TextField label="운임 (VAT 별도, 원)" inputMode="numeric" value={money(f.fare)} onChange={(e) => set('fare', digits(e.target.value))} />

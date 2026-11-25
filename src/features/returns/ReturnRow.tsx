@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CARRIER_LABEL, RETURN_KIND_LABEL, RETURN_STATUS_LABEL, returnChannel, returnChannelLabel, type ReturnItem, type ReturnStatus } from '@/api/types';
+import { CARRIER_LABEL, RETURN_KIND_LABEL, type ReturnInvoice, RETURN_STATUS_LABEL, returnChannel, returnChannelLabel, type ReturnItem, type ReturnStatus } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
 import { Badge, type BadgeTone } from '@/components/ui';
@@ -12,7 +12,8 @@ import {
   isAtPickup,
   isDelivered,
   isOverdue,
-  isTrackable,
+  isReturning,
+  isTrackableCarrier,
   isUncollected,
   STATUS_TONE,
   trackingTone,
@@ -25,12 +26,38 @@ import * as s from '@/pages/ReturnsPage.css';
  * 회수중 탭 조건(isReturning)과 같은 기준이다.
  */
 function statusChip(item: ReturnItem): { label: string; tone: BadgeTone } {
-  if (item.status === 'in_transit') {
+  // 송장이 여러 개면 하나라도 이동 중일 때 회수중
+  if (item.status === 'in_transit' && !isReturning(item)) {
     if (isUncollected(item)) return { label: '미집화', tone: 'orange' };
-    if (isAtPickup(item)) return { label: '집화출발', tone: 'purple' };
     if (isDelivered(item)) return { label: '도착', tone: 'green' };
+    if (isAtPickup(item)) return { label: '집화출발', tone: 'purple' };
   }
   return { label: RETURN_STATUS_LABEL[item.status], tone: STATUS_TONE[item.status] };
+}
+
+/** 목록에 보이는 반송장 수 (최근 송장 포함). 더 있으면 수정 모달에서 본다 */
+const INVOICES_SHOWN = 3;
+
+/** 재접수 전에 쓰던 반송장 한 줄: 몇 번째 · 택배사 송장 · 마지막 배송조회 상태 */
+function PreviousInvoice({ invoice, order }: { invoice: ReturnInvoice; order: number }) {
+  const t = invoice.tracking;
+  const link = carrierTrackingUrl(invoice.carrier, invoice.invoiceNo);
+  return (
+    <p className={s.prevInvoice}>
+      <span className={s.invoiceOrder}>{order}번째</span>
+      {invoice.carrier ? CARRIER_LABEL[invoice.carrier] : '택배사 미지정'} {invoice.invoiceNo}
+      {isTrackableCarrier(invoice.carrier) && (
+        <Badge tone={trackingTone(t.code)}>{t.label ?? (t.error ? '조회 실패' : '조회 전')}</Badge>
+      )}
+      {t.location && <span>{t.location}</span>}
+      {t.time && <span>{formatDateTime(t.time)}</span>}
+      {link && (
+        <a className={s.smallLink} href={link} target="_blank" rel="noreferrer">
+          택배사에서 보기
+        </a>
+      )}
+    </p>
+  );
 }
 
 /** 접수처 칩 색: 직접 입력한 접수처는 보라 */
@@ -66,6 +93,11 @@ export function ReturnRow({
   const chip = statusChip(item);
   const link = item.invoiceNo ? carrierTrackingUrl(item.carrier, item.invoiceNo) : null;
   const t = item.tracking;
+  const previous = item.previousInvoices;
+  /** 송장 전체 개수 (최근 송장이 n번째) */
+  const invoiceCount = previous.length + (item.invoiceNo ? 1 : 0);
+  const shownPrevious = previous.slice(0, INVOICES_SHOWN - 1);
+  const hiddenCount = previous.length - shownPrevious.length;
 
   return (
     <li className={s.item}>
@@ -119,6 +151,7 @@ export function ReturnRow({
         {item.invoiceNo ? (
           <>
             <p className={s.invoiceLine}>
+              {invoiceCount > 1 && <span className={s.invoiceOrder}>{invoiceCount}번째</span>}
               {item.carrier ? CARRIER_LABEL[item.carrier] : '택배사 미지정'} {item.invoiceNo}
               {link && (
                 <a className={s.smallLink} href={link} target="_blank" rel="noreferrer">
@@ -126,7 +159,7 @@ export function ReturnRow({
                 </a>
               )}
             </p>
-            {isTrackable(item) ? (
+            {isTrackableCarrier(item.carrier) ? (
               <div className={s.trackLine}>
                 <Badge tone={trackingTone(t.code)}>{t.label ?? (t.error ? '조회 실패' : '조회 전')}</Badge>
                 {t.location && <span>{t.location}</span>}
@@ -162,6 +195,14 @@ export function ReturnRow({
                   </li>
                 ))}
               </ol>
+            )}
+            {shownPrevious.map((invoice, index) => (
+              <PreviousInvoice key={`${invoice.invoiceNo}-${index}`} invoice={invoice} order={invoiceCount - 1 - index} />
+            ))}
+            {hiddenCount > 0 && (
+              <button type="button" className={s.linkButton} style={{ alignSelf: 'flex-start' }} onClick={() => onEdit(item)}>
+                이전 송장 {hiddenCount}개 더 보기
+              </button>
             )}
           </>
         ) : (

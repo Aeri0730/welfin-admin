@@ -114,19 +114,30 @@ interface DispatchRow {
   partner: string;
   product_text: string;
   quantity: number;
+  items?: Array<{ product: string; quantity: number }> | null;
   vehicle_no: string | null;
   vehicle_type: string | null;
   fare: number | string;
   memo: string | null;
 }
 
+const DISPATCH_COLUMNS = 'id, requested_on, shipped_on, partner, product_text, quantity, vehicle_no, vehicle_type, fare, memo';
+
+/** 0023(items 칸)을 아직 실행하지 않았을 때 나는 오류 */
+const isMissingItems = (error: { code?: string; message: string }) =>
+  (error.code === '42703' || error.code === 'PGRST204') && /items/.test(error.message);
+
 export async function fetchDispatches(): Promise<Dispatch[]> {
-  const { data, error } = await supabase
-    .from('dispatches')
-    .select('id, requested_on, shipped_on, partner, product_text, quantity, vehicle_no, vehicle_type, fare, memo')
-    .order('shipped_on', { ascending: false, nullsFirst: true })
-    .order('id', { ascending: false })
-    .returns<DispatchRow[]>();
+  const load = (columns: string) =>
+    supabase
+      .from('dispatches')
+      .select(columns)
+      .order('shipped_on', { ascending: false, nullsFirst: true })
+      .order('id', { ascending: false })
+      .returns<DispatchRow[]>();
+  let result = await load(`${DISPATCH_COLUMNS}, items`);
+  if (result.error && isMissingItems(result.error)) result = await load(DISPATCH_COLUMNS);
+  const { data, error } = result;
   if (error) throw toError(error);
   return data.map((row) => ({
     id: row.id,
@@ -135,6 +146,9 @@ export async function fetchDispatches(): Promise<Dispatch[]> {
     partner: row.partner,
     productText: row.product_text,
     quantity: row.quantity,
+    items: row.items?.length
+      ? row.items.map((i) => ({ productText: i.product, quantity: Number(i.quantity) || 0 }))
+      : [{ productText: row.product_text, quantity: row.quantity }],
     vehicleNo: row.vehicle_no,
     vehicleType: row.vehicle_type,
     fare: Number(row.fare),
@@ -143,21 +157,31 @@ export async function fetchDispatches(): Promise<Dispatch[]> {
 }
 
 export async function saveDispatch(input: DispatchInput): Promise<void> {
+  const items = input.items
+    .map((i) => ({ product: i.productText.trim(), quantity: i.quantity }))
+    .filter((i) => i.product);
   const columns = {
     requested_on: input.requestedOn || null,
     shipped_on: input.shippedOn || null,
     partner: input.partner.trim(),
-    product_text: input.productText.trim(),
-    quantity: input.quantity,
+    // 검색·엑셀용 요약
+    product_text: items.map((i) => i.product).join(' / '),
+    quantity: items.reduce((sum, i) => sum + i.quantity, 0),
     vehicle_no: input.vehicleNo?.trim() || null,
     vehicle_type: input.vehicleType?.trim() || null,
     fare: input.fare,
     memo: input.memo?.trim() || null,
     updated_at: new Date().toISOString(),
   };
-  const { error } = input.id
-    ? await supabase.from('dispatches').update(columns).eq('id', input.id)
-    : await supabase.from('dispatches').insert(columns);
+  const write = (row: Record<string, unknown>) =>
+    input.id ? supabase.from('dispatches').update(row).eq('id', input.id) : supabase.from('dispatches').insert(row);
+  let { error } = await write({ ...columns, items });
+  if (error && isMissingItems(error)) {
+    if (items.length > 1) {
+      throw new Error('상품 여러 개를 저장할 칸이 없어요. supabase/migrations/0023_dispatch_items.sql 을 먼저 실행해주세요');
+    }
+    ({ error } = await write(columns));
+  }
   if (error) throw toError(error);
 }
 

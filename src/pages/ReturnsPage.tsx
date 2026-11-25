@@ -16,7 +16,7 @@ import { Dropdown, type DropdownOption } from '@/components/Dropdown';
 import { ReturnEditDialog } from '@/features/returns/ReturnEditDialog';
 import { ReturnInput } from '@/features/returns/ReturnInput';
 import { ReturnRow } from '@/features/returns/ReturnRow';
-import { CHANNEL_GROUP_LABEL, FILTERS, sortByChannel, type ChannelGroup, isTrackable, matchesFilter, matchesSearch, OVERDUE_ATTEMPT, attemptLabel, attemptOf, type ReturnFilter } from '@/features/returns/status';
+import { CHANNEL_GROUP_LABEL, FILTERS, invoicesOf, sortByChannel, type ChannelGroup, isTrackable, matchesFilter, matchesSearch, OVERDUE_ATTEMPT, attemptLabel, attemptOf, type ReturnFilter } from '@/features/returns/status';
 import { INSPECTED_KEEP_DAYS } from '@/api/returns';
 import { downloadCsv } from '@/lib/csv';
 import { today } from '@/lib/format';
@@ -210,7 +210,7 @@ export function ReturnsPage() {
         r.kind === 'return' ? '반품' : r.kind === 'exchange' ? '교환' : '',
         r.reason ?? '',
         r.carrier ?? '',
-        r.invoiceNo ?? '',
+        invoicesOf(r).map((invoice) => invoice.invoiceNo).join(' / '),
         r.tracking.label ?? '',
         r.memo ?? '',
       ]),

@@ -1,10 +1,18 @@
-import { useMemo, useRef, useState } from 'react';
-import { useCreateMovements, useProducts, useStock, useWarehouses } from '@/api/queries';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCreateMovements,
+  useProducts,
+  useSaveSiteStockSnapshot,
+  useSiteStockSnapshot,
+  useStock,
+  useWarehouses,
+} from '@/api/queries';
 import type { Product } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
 import { Dropdown } from '@/components/Dropdown';
-import { SelectField, TextAreaField } from '@/components/Field';
+import { SearchSelect } from '@/components/SearchSelect';
+import { SelectField, TextAreaField, TextField } from '@/components/Field';
 import { Icon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { ErrorBox, PageHeader, Skeleton } from '@/components/ui';
@@ -15,26 +23,26 @@ import {
   editSiteQuantity,
   extractRows,
   hasDiff,
-  loadAliases,
-  loadSiteData,
+  clearSiteDraft,
+  loadSiteDraft,
   normalizeName,
-  saveAliases,
-  saveSiteData,
+  saveSiteDraft,
   SITE_KEYS,
   SITES,
   sortRows,
   tableFromPaste,
   tablesFromFile,
-  type AliasMap,
   type ColumnPick,
+  type SiteDataMap,
   type SiteKey,
   type Table,
 } from '@/features/inventory/siteStock';
 import { CompareTable } from '@/features/inventory/CompareTable';
 import { EditableQty, Qty } from '@/features/inventory/EditableQty';
 import { SiteCard } from '@/features/inventory/SiteCard';
+import { useSiteLinks, type LinkChoice } from '@/features/inventory/useSiteLinks';
 import { cx } from '@/lib/cx';
-import { formatNumber, today } from '@/lib/format';
+import { formatDateLabel, formatDateTime, formatNumber, today } from '@/lib/format';
 import { sumBy } from '@/lib/sum';
 import * as st from './StockComparePage.css';
 import * as s from './pages.css';
@@ -61,11 +69,20 @@ export function StockComparePage() {
   const toast = useToast();
   const products = useProducts();
   const warehouses = useWarehouses();
-  const stock = useStock();
   const createMovements = useCreateMovements();
 
-  const [data, setData] = useState(loadSiteData);
-  const [aliases, setAliases] = useState<AliasMap>(loadAliases);
+  const [date, setDate] = useState(today);
+  const isToday = date === today();
+  /** 우리 재고: 오늘은 지금 재고, 지난 날짜는 그날 마감 기준 */
+  const stock = useStock(isToday ? undefined : date);
+  const snapshot = useSiteStockSnapshot(date);
+  const saveSnapshot = useSaveSiteStockSnapshot();
+  const saved = snapshot.data ?? null;
+
+  /** 이 날짜에 올려둔 파일 (저장 전이어도 브라우저에 날짜별로 남음). 없으면 그날 저장한 내용으로 채운다 */
+  const [data, setData] = useState<SiteDataMap>(() => loadSiteDraft(today(), true) ?? {});
+  const hasDraft = useRef(loadSiteDraft(today(), true) !== null);
+  const { aliases, setLink, error: linkError } = useSiteLinks();
   const [view, setView] = useState<View>('compare');
   const [query, setQuery] = useState('');
   const [diffOnly, setDiffOnly] = useState(false);
@@ -78,12 +95,13 @@ export function StockComparePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadSite = useRef<SiteKey>('ezadmin');
 
-  // 비교할 우리 창고: 고르지 않았으면 '스타팩' 이 들어간 창고, 없으면 전체
+  // 비교할 우리 창고: 고르지 않았으면 그날 저장한 창고 → '스타팩' 이 들어간 창고 → 전체
   const warehouseId = useMemo(() => {
     if (warehouseSel) return warehouseSel;
+    if (saved) return saved.warehouseId === null ? 'all' : String(saved.warehouseId);
     const starpack = warehouses.data?.find((w) => w.name.includes('스타팩'));
     return starpack ? String(starpack.id) : 'all';
-  }, [warehouseSel, warehouses.data]);
+  }, [warehouseSel, saved, warehouses.data]);
   const warehouseName = warehouses.data?.find((w) => String(w.id) === warehouseId)?.name;
 
   const ourStock = useMemo(() => {
@@ -95,21 +113,34 @@ export function StockComparePage() {
     return map;
   }, [stock.data, warehouseId]);
 
+  const shownData = data;
+
+  // 이 날짜에 올려둔 파일이 없으면 그날 저장한 비교로 채운다 (다른 컴퓨터에서 열었을 때, 지난 날짜를 열었을 때)
+  const hydratedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (hydratedFor.current === date || snapshot.isLoading) return;
+    hydratedFor.current = date;
+    if (!hasDraft.current && saved) setData(saved.sites);
+  }, [date, saved, snapshot.isLoading]);
+
+  /** 저장한 내용과 지금 화면이 다른지 */
+  const unsaved = !snapshot.isLoading && JSON.stringify(data) !== JSON.stringify(saved?.sites ?? {});
+
   const productList = useMemo(() => products.data ?? [], [products.data]);
   const productById = useMemo(() => new Map(productList.map((p) => [p.id, p])), [productList]);
   const match = useMemo(() => createMatcher(productList, aliases), [productList, aliases]);
-  const uploaded = SITE_KEYS.filter((k) => data[k]);
+  const uploaded = SITE_KEYS.filter((k) => shownData[k]);
 
   const compareRows = useMemo(
-    () => buildCompare(productList, ourStock, data, match),
-    [productList, ourStock, data, match],
+    () => buildCompare(productList, ourStock, shownData, match),
+    [productList, ourStock, shownData, match],
   );
   const diffCount = compareRows.filter((row) => hasDiff(row, uploaded)).length;
 
   /** 사이트 시트 줄: 주요 제품 먼저, 나머지는 많은 순 */
   const siteRowsOf = (key: SiteKey) =>
     sortRows(
-      (data[key]?.rows ?? []).map((row) => {
+      (shownData[key]?.rows ?? []).map((row) => {
         const m = match(key, row);
         const product: Product | undefined = m.productId !== null ? productById.get(m.productId) : undefined;
         return { ...row, match: m, product, pinOrder: product?.reportOrder ?? null };
@@ -118,9 +149,10 @@ export function StockComparePage() {
     );
 
   /* ---------- 파일 받기 ---------- */
-  const saveData = (next: typeof data) => {
+  const saveData = (next: SiteDataMap) => {
     setData(next);
-    saveSiteData(next);
+    saveSiteDraft(date, next);
+    hasDraft.current = true;
   };
 
   const commit = (target: SiteKey, fileName: string, table: Table, pick: ColumnPick) => {
@@ -175,20 +207,44 @@ export function StockComparePage() {
     if (view === key) setView('compare');
   };
 
+  /* ---------- 날짜별 저장 ---------- */
+  const changeDate = (next: string) => {
+    if (next === date) return;
+    const draft = loadSiteDraft(next, next === today());
+    hasDraft.current = draft !== null;
+    setData(draft ?? {});
+    setDate(next);
+    setWarehouseSel('');
+    setView('compare');
+    setPending(null);
+    setError(null);
+  };
+
+  const handleSave = () => {
+    const savedDate = date;
+    saveSnapshot.mutate(
+      {
+        date: savedDate,
+        warehouseId: warehouseId === 'all' ? null : Number(warehouseId),
+        warehouseName: warehouseName ?? null,
+        sites: data,
+        ours: Object.fromEntries(ourStock),
+      },
+      {
+        onSuccess: () => {
+          // 저장했으니 브라우저 임시본은 지운다 (다음엔 저장본에서 불러옴)
+          clearSiteDraft(savedDate);
+          if (savedDate === date) hasDraft.current = false;
+          toast(`${formatDateLabel(savedDate)} 재고 비교를 저장했어요`);
+        },
+      },
+    );
+  };
+
   /* ---------- 표에서 고치기 ---------- */
   const editSite = (key: SiteKey, names: string[], fallbackName: string, value: number) => {
     const current = data[key];
     if (current) saveData({ ...data, [key]: editSiteQuantity(current, names, fallbackName, value) });
-  };
-
-  const setAlias = (key: SiteKey, name: string, value: string) => {
-    const siteMap = { ...aliases[key] };
-    const aliasKey = normalizeName(name);
-    if (value === '') delete siteMap[aliasKey];
-    else siteMap[aliasKey] = value === 'none' ? null : Number(value);
-    const next = { ...aliases, [key]: siteMap };
-    setAliases(next);
-    saveAliases(next);
   };
 
   const saveAdjust = () => {
@@ -251,15 +307,39 @@ export function StockComparePage() {
       const aoa = [['상품명', '재고'], ...rows.map((r) => [r.name, r.quantity]), ['합계', sumBy(rows, (r) => r.quantity)]];
       XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(aoa), SITES[key].label);
     }
-    XLSX.writeFile(book, `사이트재고비교_${today()}.xlsx`);
+    XLSX.writeFile(book, `사이트재고비교_${date}.xlsx`);
   };
 
-  const loading = products.isLoading || stock.isLoading;
-  const loadError = products.error ?? stock.error;
+  const loading = products.isLoading || stock.isLoading || snapshot.isLoading;
+  const loadError = products.error ?? stock.error ?? snapshot.error ?? saveSnapshot.error ?? linkError;
 
   return (
     <div className={s.stack}>
-      <PageHeader title="사이트 재고 비교" description="사이트에서 받은 재고 파일을 올리면 우리 재고와 바로 비교해요" />
+      <PageHeader
+        title="사이트 재고 비교"
+        description="사이트에서 받은 재고 파일을 올리면 우리 재고와 비교해요. 저장하면 그 날짜로 남아요"
+        actions={
+          <TextField
+            aria-label="비교 날짜"
+            type="date"
+            value={date}
+            max={today()}
+            onChange={(e) => e.target.value && changeDate(e.target.value)}
+          />
+        }
+      />
+
+      {!isToday && (
+        <div className={st.historyBanner}>
+          <span>
+            {formatDateLabel(date)} 비교를 보고 있어요 · 우리 재고는 그날 마감 기준이고, 파일을 올리거나 숫자를 고친 뒤 저장하면
+            이 날짜로 남아요
+          </span>
+          <Button size="sm" variant="weak" className={st.softButton} onClick={() => changeDate(today())}>
+            오늘로 돌아가기
+          </Button>
+        </div>
+      )}
 
       <input
         ref={fileRef}
@@ -309,10 +389,31 @@ export function StockComparePage() {
                 )}
               </p>
             </div>
-            <Button variant="weak" size="sm" className={st.softButton} onClick={() => void handleDownload()} disabled={uploaded.length === 0}>
-              <Icon name="download" size={16} />
-              엑셀로 받기
-            </Button>
+            <div className={st.boardActions}>
+              {unsaved ? (
+                <span className={st.savedNote}>저장 안 한 변경이 있어요</span>
+              ) : (
+                saved && <span className={st.savedNote}>{formatDateTime(saved.updatedAt)} 저장됨</span>
+              )}
+              <Button
+                variant="weak"
+                size="sm"
+                className={st.softButton}
+                onClick={() => void handleDownload()}
+                disabled={uploaded.length === 0}
+              >
+                <Icon name="download" size={16} />
+                엑셀로 받기
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                loading={saveSnapshot.isPending}
+                disabled={uploaded.length === 0 || (saved !== null && !unsaved && warehouseSel === '')}
+              >
+                {saved ? '다시 저장' : '저장'}
+              </Button>
+            </div>
           </div>
 
           <div className={st.segment} role="tablist" aria-label="보기">
@@ -332,7 +433,7 @@ export function StockComparePage() {
                 role="tab"
                 aria-selected={view === key}
                 className={st.segmentItem}
-                disabled={!data[key]}
+                disabled={!shownData[key]}
                 onClick={() => setView(key)}
               >
                 {SITES[key].label}
@@ -369,14 +470,17 @@ export function StockComparePage() {
           ) : view === 'compare' ? (
             uploaded.length === 0 ? (
               <div className={st.empty}>
-                <p className={st.emptyTitle}>비교할 파일이 없어요</p>
-                <p className={st.emptyDesc}>셀메이트·이카운트·이지어드민 중 하나만 올려도 비교할 수 있어요</p>
+                <p className={st.emptyTitle}>{isToday ? '비교할 파일이 없어요' : '이 날 저장한 비교가 없어요'}</p>
+                <p className={st.emptyDesc}>
+                  셀메이트·이카운트·이지어드민 중 하나만 올려도 비교할 수 있어요
+                  {!isToday && ' · 올리고 저장하면 이 날짜로 남아요'}
+                </p>
               </div>
             ) : (
               <CompareTable
                 rows={visibleCompare}
                 uploaded={uploaded}
-                canEditOurs={warehouseId !== 'all'}
+                canEditOurs={isToday && warehouseId !== 'all'}
                 onEditSite={(k, row, value) => editSite(k, row.sites[k]?.names ?? [], row.name, value)}
                 onEditOurs={(row, value) => {
                   if (row.productId !== null)
@@ -419,18 +523,20 @@ export function StockComparePage() {
                         </EditableQty>
                       </td>
                       <td className={st.td}>
-                        <Dropdown
+                        <SearchSelect
+                          size="sm"
                           ariaLabel={`${row.name} 우리 제품 연결`}
+                          placeholder="제품 이름·품번으로 찾기"
                           className={st.linkSelect}
                           value={aliasValue === undefined ? '' : aliasValue === null ? 'none' : String(aliasValue)}
-                          onChange={(next) => setAlias(view, row.name, next)}
+                          onChange={(next) => setLink(view, row.name, next as LinkChoice)}
                           options={[
                             {
                               value: '',
                               label: row.product ? `${row.product.name}${row.match.guessed ? ' (추정)' : ''}` : '연결할 제품 고르기',
                             },
                             { value: 'none', label: '연결 안 함' },
-                            ...productList.map((p) => ({ value: String(p.id), label: p.name })),
+                            ...productList.map((p) => ({ value: String(p.id), label: p.name, hint: p.sku })),
                           ]}
                         />
                         {!row.product && <span className={st.warnBadge}>미연결</span>}

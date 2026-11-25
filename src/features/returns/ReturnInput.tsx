@@ -14,6 +14,7 @@ import { useToast } from "@/components/Toast";
 import { Badge, Card, ErrorBox, type BadgeTone } from "@/components/ui";
 import { today } from "@/lib/format";
 import { attemptLabel, attemptOf } from "./status";
+import { ReturnCreateDialog } from "./ReturnCreateDialog";
 import {
   INPUT_MODE_LABEL,
   planPaste,
@@ -104,6 +105,8 @@ export function ReturnInput({ existing }: { existing: ReturnItem[] }) {
   const [carrier, setCarrier] = useState<Carrier>("cj");
   const [text, setText] = useState("");
   const [plan, setPlan] = useState<PlanRow[] | null>(null);
+  /** 개별 입력 모달 */
+  const [creating, setCreating] = useState(false);
 
   const counts = useMemo(() => {
     const result = {
@@ -302,9 +305,14 @@ export function ReturnInput({ existing }: { existing: ReturnItem[] }) {
               </Button>
             )}
             {!plan ? (
-              <Button onClick={handlePreview} disabled={!text.trim()}>
-                미리보기
-              </Button>
+              <>
+                <Button onClick={() => setCreating(true)}>
+                  개별 입력
+                </Button>
+                <Button onClick={handlePreview} disabled={!text.trim()}>
+                  미리보기
+                </Button>
+              </>
             ) : (
               <Button
                 onClick={handleSave}
@@ -419,6 +427,7 @@ export function ReturnInput({ existing }: { existing: ReturnItem[] }) {
           <ErrorBox error={createReturns.error ?? updateReturns.error} />
         </div>
       )}
+      {creating && <ReturnCreateDialog onClose={() => setCreating(false)} />}
     </Card>
   );
 }

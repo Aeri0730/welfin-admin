@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { NavLink } from 'react-router';
-import { useCreateMovements, usePartners, useProducts, useStock, useWarehouses } from '@/api/queries';
+import {
+  useCreateMovements,
+  usePartners,
+  useProducts,
+  useSalesChannels,
+  useStock,
+  useWarehouses,
+} from '@/api/queries';
 import type { CreateMovementsInput, Warehouse } from '@/api/types';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
-import { SelectField, TextAreaField, TextField } from '@/components/Field';
+import { SearchSelectField, SelectField, TextAreaField, TextField } from '@/components/Field';
 import { Icon } from '@/components/Icon';
 import { useToast } from '@/components/Toast';
 import { Card, ErrorBox, PageHeader } from '@/components/ui';
 import * as fieldStyles from '@/components/Field.css';
 import { formatSchedule } from '@/features/inventory/movement';
+import { TransferPasteDialog } from '@/features/inventory/TransferPasteDialog';
 import { addDays, formatNumber, today } from '@/lib/format';
 import * as styles from './MovementPage.css';
 
@@ -62,16 +70,17 @@ interface ItemDraft {
   quantity: string;
 }
 
-/** 입고·출고 안의 '입력 | 현황' 탭 */
-export function MovementSubTabs({ type }: { type: 'inbound' | 'outbound' }) {
+/** 입고·출고·창고 이동 안의 '입력 | 현황(내역)' 탭 */
+export function MovementSubTabs({ type }: { type: MovementFormType }) {
   const verb = CONFIG[type].verb;
+  const listLabel = type === 'transfer' ? '내역' : '현황';
   return (
     <nav className={styles.subTabs} aria-label={`${verb} 메뉴`}>
       <NavLink to={`/${type}`} end className={styles.subTab}>
         {verb} 입력
       </NavLink>
       <NavLink to={`/${type}/status`} className={styles.subTab}>
-        {verb} 현황
+        {verb} {listLabel}
       </NavLink>
     </nav>
   );
@@ -89,6 +98,7 @@ export function MovementPage({ type }: { type: MovementFormType }) {
   const warehouses = useWarehouses();
   const products = useProducts();
   const partners = usePartners();
+  const salesChannels = useSalesChannels();
   const currentStock = useStock();
   const createMovements = useCreateMovements();
 
@@ -99,9 +109,12 @@ export function MovementPage({ type }: { type: MovementFormType }) {
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [partnerId, setPartnerId] = useState('');
+  const [salesChannelId, setSalesChannelId] = useState('');
   const [memo, setMemo] = useState('');
   const [items, setItems] = useState<ItemDraft[]>(() => [newItem()]);
   const [submitted, setSubmitted] = useState(false);
+  /** 쿠팡 입고 안내 붙여넣기 모달 (창고 이동만) */
+  const [pasting, setPasting] = useState(false);
   /** 예정으로 등록: 정한 시각 이후에 재고에 반영 */
   const [scheduled, setScheduled] = useState(false);
   const [scheduledAt, setScheduledAt] = useState(() => `${addDays(today(), 1)}T09:00`);
@@ -123,7 +136,12 @@ export function MovementPage({ type }: { type: MovementFormType }) {
     () => (products.data ?? []).filter((p) => p.isActive),
     [products.data],
   );
+  const productOptions = useMemo(
+    () => activeProducts.map((p) => ({ value: String(p.id), label: p.name, hint: p.sku })),
+    [activeProducts],
+  );
   const activePartners = (partners.data ?? []).filter((p) => p.isActive);
+  const activeSalesChannels = (salesChannels.data ?? []).filter((c) => c.isActive);
 
   /** 출발 창고의 현재 재고 (출고·이동 시 참고용) */
   const fromStock = useMemo(() => {
@@ -191,6 +209,7 @@ export function MovementPage({ type }: { type: MovementFormType }) {
       fromWarehouseId: config.needsFrom ? Number(fromId) : null,
       toWarehouseId: config.needsTo ? Number(toId) : null,
       partnerId: config.needsPartner ? Number(partnerId) : null,
+      salesChannelId: type === 'outbound' && salesChannelId ? Number(salesChannelId) : null,
       memo,
       items: filledItems.map((item) => ({
         productId: Number(item.productId),
@@ -223,6 +242,8 @@ export function MovementPage({ type }: { type: MovementFormType }) {
     });
   };
 
+  const warehouseName = (id: string) => warehouses.data?.find((w) => String(w.id) === id)?.name ?? '창고 미선택';
+
   const warehouseOptions = (warehouses.data ?? []).map((w) => (
     <option key={w.id} value={w.id}>
       {w.name}
@@ -241,8 +262,19 @@ export function MovementPage({ type }: { type: MovementFormType }) {
           </NavLink>
         </nav>
       )}
-      <PageHeader title={config.title} description={config.description} />
-      {type !== 'transfer' && <MovementSubTabs type={type} />}
+      <PageHeader
+        title={config.title}
+        description={config.description}
+        actions={
+          type === 'transfer' && (
+            <Button onClick={() => setPasting(true)}>
+              <Icon name="plus" size={16} />
+              쿠팡 입고 붙여넣기
+            </Button>
+          )
+        }
+      />
+      <MovementSubTabs type={type} />
 
       <form className={styles.form} onSubmit={handleSubmit} noValidate>
         <Card title="기본 정보">
@@ -271,6 +303,16 @@ export function MovementPage({ type }: { type: MovementFormType }) {
                 {activePartners.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
+                  </option>
+                ))}
+              </SelectField>
+            )}
+            {type === 'outbound' && (
+              <SelectField label="판매처 (선택)" value={salesChannelId} onChange={(e) => setSalesChannelId(e.target.value)}>
+                <option value="">선택 안 함</option>
+                {activeSalesChannels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
               </SelectField>
@@ -331,20 +373,14 @@ export function MovementPage({ type }: { type: MovementFormType }) {
             const exceeds = stock !== null && Number(item.quantity) > stock;
             return (
               <div key={item.key} className={styles.itemRow}>
-                <SelectField
-                  aria-label="제품"
+                <SearchSelectField
+                  ariaLabel="제품"
                   value={item.productId}
-                  onChange={(e) => updateItem(item.key, { productId: e.target.value })}
+                  options={productOptions}
+                  onChange={(productId) => updateItem(item.key, { productId })}
                   hint={stock !== null ? `현재 재고 ${formatNumber(stock)}개` : undefined}
                   error={exceeds ? `재고(${formatNumber(stock)}개)보다 많아요` : null}
-                >
-                  <option value="">제품 선택</option>
-                  {activeProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.sku})
-                    </option>
-                  ))}
-                </SelectField>
+                />
                 <TextField
                   aria-label="수량"
                   inputMode="numeric"
@@ -405,6 +441,16 @@ export function MovementPage({ type }: { type: MovementFormType }) {
           </Button>
         </div>
       </form>
+
+      {pasting && (
+        <TransferPasteDialog
+          fromId={fromId}
+          toId={toId}
+          fromName={warehouseName(fromId)}
+          toName={warehouseName(toId)}
+          onClose={() => setPasting(false)}
+        />
+      )}
 
       <Dialog
         open={shortage !== null}

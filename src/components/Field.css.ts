@@ -72,3 +72,14 @@ export const errorMessage = style({
   fontSize: 13,
   color: vars.color.red500,
 });
+
+/** 오른쪽 끝에 버튼이 들어가는 입력칸 */
+export const inputWrap = style({ position: 'relative', minWidth: 0 });
+export const inputWithTrailing = style({ paddingRight: 48 });
+export const trailing = style({
+  position: 'absolute',
+  top: '50%',
+  right: 6,
+  transform: 'translateY(-50%)',
+  display: 'flex',
+});

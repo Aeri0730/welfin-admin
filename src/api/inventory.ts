@@ -10,6 +10,7 @@ import type {
   Product,
   ProductCategory,
   ProductPatch,
+  SalesChannel,
   StockLevel,
   Warehouse,
 } from './types';
@@ -148,6 +149,33 @@ export async function setPartnerActive(id: number, isActive: boolean): Promise<v
   if (error) throw toError(error);
 }
 
+const isMissing = (error: { code?: string }) => ['42P01', 'PGRST205', '42703', 'PGRST200'].includes(error.code ?? '');
+
+function salesChannelError(error: { message: string; code?: string }): Error {
+  if (isMissing(error)) return new Error('판매처 테이블이 없어요. supabase/migrations/0021_sales_channels.sql 을 실행해주세요');
+  return toError(error);
+}
+
+/** 판매처 (0021 을 아직 실행하지 않았으면 빈 목록) */
+export async function fetchSalesChannels(): Promise<SalesChannel[]> {
+  const { data, error } = await supabase.from('sales_channels').select('id, name, memo, is_active').order('name');
+  if (error) {
+    if (isMissing(error)) return [];
+    throw toError(error);
+  }
+  return data.map((row) => ({ id: row.id, name: row.name, memo: row.memo, isActive: row.is_active }));
+}
+
+export async function createSalesChannel(input: CreatePartnerInput): Promise<void> {
+  const { error } = await supabase.from('sales_channels').insert({ name: input.name, memo: input.memo || null });
+  if (error) throw salesChannelError(error);
+}
+
+export async function setSalesChannelActive(id: number, isActive: boolean): Promise<void> {
+  const { error } = await supabase.from('sales_channels').update({ is_active: isActive }).eq('id', id);
+  if (error) throw salesChannelError(error);
+}
+
 /** 기준일까지의 창고별·제품별 재고. date 가 없으면 전체 기록 기준(현재 재고). */
 export async function fetchStock(date?: string): Promise<StockLevel[]> {
   const { data, error } = await supabase.rpc('stock_as_of', { p_date: date ?? null });
@@ -173,16 +201,31 @@ interface MovementRow {
   from_warehouse: { id: number; name: string } | null;
   to_warehouse: { id: number; name: string } | null;
   partner: { id: number; name: string } | null;
+  sales_channel?: { id: number; name: string } | null;
   creator: { name: string } | null;
   scheduled_at: string | null;
 }
 
-const MOVEMENT_SELECT = `id, batch_id, type, moved_on, quantity, memo, created_at, scheduled_at,
+const MOVEMENT_BASE_SELECT = `id, batch_id, type, moved_on, quantity, memo, created_at, scheduled_at,
        product:products!inner(id, name, sku),
        from_warehouse:warehouses!stock_movements_from_warehouse_id_fkey(id, name),
        to_warehouse:warehouses!stock_movements_to_warehouse_id_fkey(id, name),
        partner:partners(id, name),
        creator:profiles!stock_movements_created_by_fkey(name)`;
+const MOVEMENT_SELECT = `${MOVEMENT_BASE_SELECT}, sales_channel:sales_channels(id, name)`;
+
+/**
+ * 입출고 기록 조회. 0021(판매처)을 아직 실행하지 않았으면 판매처 없이 다시 읽는다.
+ * build 는 select 할 칸을 받아 조건을 붙인 쿼리를 돌려준다.
+ */
+async function selectMovements(
+  build: (columns: string) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>,
+): Promise<Movement[]> {
+  let result = await build(MOVEMENT_SELECT);
+  if (result.error && isMissing(result.error)) result = await build(MOVEMENT_BASE_SELECT);
+  if (result.error) throw toError(result.error);
+  return (result.data as MovementRow[]).map(toMovement);
+}
 
 function toMovement(row: MovementRow): Movement {
   return {
@@ -197,6 +240,7 @@ function toMovement(row: MovementRow): Movement {
     fromWarehouse: row.from_warehouse,
     toWarehouse: row.to_warehouse,
     partner: row.partner,
+    salesChannel: row.sales_channel ?? null,
     createdBy: row.creator?.name ?? '-',
     scheduledAt: row.scheduled_at,
   };
@@ -204,17 +248,18 @@ function toMovement(row: MovementRow): Movement {
 
 /** 아직 반영 전인 예정 입출고 (가까운 순) */
 export async function fetchPendingMovements(type?: MovementType): Promise<Movement[]> {
-  let query = supabase
-    .from('stock_movements')
-    .select(MOVEMENT_SELECT)
-    .gt('scheduled_at', new Date().toISOString())
-    .order('scheduled_at', { ascending: true })
-    .order('id', { ascending: true })
-    .limit(500);
-  if (type) query = query.eq('type', type);
-  const { data, error } = await query;
-  if (error) throw toError(error);
-  return (data as unknown as MovementRow[]).map(toMovement);
+  const now = new Date().toISOString();
+  return selectMovements((columns) => {
+    let query = supabase
+      .from('stock_movements')
+      .select(columns)
+      .gt('scheduled_at', now)
+      .order('scheduled_at', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(500);
+    if (type) query = query.eq('type', type);
+    return query;
+  });
 }
 
 /** 예정 묶음 취소 (반영 전만 가능) */
@@ -251,26 +296,22 @@ export async function deleteMovement(id: number): Promise<void> {
 }
 
 export async function fetchMovements(filter: MovementFilter): Promise<Movement[]> {
-  let query = supabase
-    .from('stock_movements')
-    .select(MOVEMENT_SELECT)
-    .gte('moved_on', filter.from)
-    .lte('moved_on', filter.to)
-    .order('moved_on', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(1000);
+  return selectMovements((columns) => {
+    let query = supabase
+      .from('stock_movements')
+      .select(columns)
+      .gte('moved_on', filter.from)
+      .lte('moved_on', filter.to)
+      .order('moved_on', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(1000);
 
-  if (filter.type) query = query.eq('type', filter.type);
-  if (filter.warehouseId) {
-    query = query.or(
-      `from_warehouse_id.eq.${filter.warehouseId},to_warehouse_id.eq.${filter.warehouseId}`,
-    );
-  }
-
-  const { data, error } = await query;
-  if (error) throw toError(error);
-
-  return (data as unknown as MovementRow[]).map(toMovement);
+    if (filter.type) query = query.eq('type', filter.type);
+    if (filter.warehouseId) {
+      query = query.or(`from_warehouse_id.eq.${filter.warehouseId},to_warehouse_id.eq.${filter.warehouseId}`);
+    }
+    return query;
+  });
 }
 
 export async function createMovements(input: CreateMovementsInput): Promise<string> {
@@ -287,7 +328,14 @@ export async function createMovements(input: CreateMovementsInput): Promise<stri
     })),
     p_allow_negative: input.allowNegative ?? false,
     p_scheduled_at: input.scheduledAt ?? null,
+    // 판매처를 골랐을 때만 보낸다 (0021 실행 전에도 판매처 없는 등록은 그대로 되도록)
+    ...(input.salesChannelId ? { p_sales_channel_id: input.salesChannelId } : {}),
   });
-  if (error) throw toError(error);
+  if (error) {
+    if (input.salesChannelId && error.code === 'PGRST202') {
+      throw new Error('판매처를 저장하려면 supabase/migrations/0021_sales_channels.sql 을 먼저 실행해주세요');
+    }
+    throw toError(error);
+  }
   return data as string;
 }

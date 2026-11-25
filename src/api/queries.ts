@@ -4,13 +4,19 @@ import * as inventory from './inventory';
 import * as returns from './returns';
 import * as sales from './sales';
 import * as settlements from './settlements';
+import * as siteStock from './siteStock';
 import * as storage from './storage';
+import * as orderRequests from './orderRequests';
+import * as transfers from './transfers';
+import type { AliasMap } from '@/features/inventory/siteStock';
 import type { MovementFilter, MovementType, SettlementKind } from './types';
 
 export const queryKeys = {
   warehouses: ['warehouses'] as const,
   products: ['products'] as const,
   partners: ['partners'] as const,
+  salesChannels: ['salesChannels'] as const,
+  siteProductLinks: ['siteProductLinks'] as const,
   stock: (date?: string) => ['stock', date ?? 'current'] as const,
   movements: (filter: MovementFilter) => ['movements', filter] as const,
   returns: ['returns'] as const,
@@ -19,6 +25,7 @@ export const queryKeys = {
   storageFees: (from: string, to: string) => ['storageFees', from, to] as const,
   storageDays: (from: string, to: string) => ['storageFees', 'days', from, to] as const,
   storageItems: (date: string) => ['storageFees', 'items', date] as const,
+  siteStockSnapshot: (date: string) => ['siteStockSnapshot', date] as const,
 };
 
 export function useWarehouses() {
@@ -139,6 +146,60 @@ export function useSetPartnerActive() {
   });
 }
 
+/* ---------- 판매처 ---------- */
+
+export function useSalesChannels() {
+  return useQuery({ queryKey: queryKeys.salesChannels, queryFn: inventory.fetchSalesChannels });
+}
+
+export function useCreateSalesChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inventory.createSalesChannel,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.salesChannels }),
+  });
+}
+
+export function useSetSalesChannelActive() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => inventory.setSalesChannelActive(id, isActive),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.salesChannels }),
+  });
+}
+
+/* ---------- 사이트 상품 ↔ 우리 제품 연결 ---------- */
+
+export function useSiteProductLinks() {
+  return useQuery({ queryKey: queryKeys.siteProductLinks, queryFn: siteStock.fetchSiteProductLinks });
+}
+
+/** 연결 저장. 고르자마자 화면에 반영하고(낙관적 갱신), 실패하면 되돌린다 */
+export function useSaveSiteProductLinks() {
+  const queryClient = useQueryClient();
+  const key = queryKeys.siteProductLinks;
+  return useMutation({
+    mutationFn: siteStock.saveSiteProductLinks,
+    onMutate: async (links) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<AliasMap>(key);
+      if (previous) {
+        const next: AliasMap = { sellmate: { ...previous.sellmate }, ecount: { ...previous.ecount }, ezadmin: { ...previous.ezadmin } };
+        for (const link of links) {
+          if (link.productId === undefined) delete next[link.site][link.nameKey];
+          else next[link.site][link.nameKey] = link.productId;
+        }
+        queryClient.setQueryData(key, next);
+      }
+      return { previous };
+    },
+    onError: (_error, _links, context) => {
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+}
+
 /* ---------- 회수 ---------- */
 
 export function useReturns() {
@@ -154,6 +215,7 @@ function useReturnsMutation<TVariables, TResult>(fn: (variables: TVariables) => 
 }
 
 export const useCreateReturns = () => useReturnsMutation(returns.createReturns);
+export const useCreateReturn = () => useReturnsMutation(returns.createReturn);
 export const useUpdateReturns = () => useReturnsMutation(returns.updateReturns);
 export const useDeleteReturn = () => useReturnsMutation(returns.deleteReturn);
 export const useRefreshTracking = () => useReturnsMutation(returns.refreshTracking);
@@ -263,6 +325,23 @@ export const useSaveStorageItems = () => useStorageMutation(storage.saveStorageI
 export const useDeleteStorageDay = () => useStorageMutation(storage.deleteStorageDay);
 export const useSaveStorageMemo = () => useStorageMutation(storage.saveStorageMemo);
 
+/* ---------- 사이트 재고 비교 저장 ---------- */
+
+export function useSiteStockSnapshot(date: string) {
+  return useQuery({
+    queryKey: queryKeys.siteStockSnapshot(date),
+    queryFn: () => siteStock.fetchSiteStockSnapshot(date),
+  });
+}
+
+export function useSaveSiteStockSnapshot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: siteStock.saveSiteStockSnapshot,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['siteStockSnapshot'] }),
+  });
+}
+
 /* ---------- 정산 ---------- */
 
 export function useSettlements(kind: SettlementKind) {
@@ -302,5 +381,45 @@ export function useDeleteDispatch() {
   return useMutation({
     mutationFn: settlements.deleteDispatch,
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['dispatches'] }),
+  });
+}
+
+/** 창고 이동(쿠팡 입고) 상세: 센터·입고시간·PLT·트럭·차량비용 */
+export function useTransferDetails(batchIds: string[]) {
+  const ids = [...new Set(batchIds)].sort();
+  return useQuery({
+    queryKey: ['transferDetails', ids] as const,
+    queryFn: () => transfers.fetchTransferDetails(ids),
+    enabled: ids.length > 0,
+  });
+}
+
+export function useSaveTransferDetail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: transfers.saveTransferDetail,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['transferDetails'] }),
+  });
+}
+
+/* ---------- 발주 신청 ---------- */
+
+export function useOrderRequests(date: string) {
+  return useQuery({ queryKey: ['orderRequests', date], queryFn: () => orderRequests.fetchOrderRequests(date) });
+}
+
+export function useSaveOrderRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: orderRequests.saveOrderRequest,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['orderRequests'] }),
+  });
+}
+
+export function useDeleteOrderRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: orderRequests.deleteOrderRequest,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['orderRequests'] }),
   });
 }

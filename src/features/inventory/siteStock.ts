@@ -72,6 +72,9 @@ export interface SiteData {
   rows: SiteRow[];
 }
 
+/** 사이트별로 올린 재고 (안 올린 사이트는 없음) */
+export type SiteDataMap = Partial<Record<SiteKey, SiteData>>;
+
 const squash = (value: string) => value.replace(/\s+/g, '');
 
 function findCol(header: string[], candidates: string[], exclude: number[] = []): number {
@@ -134,10 +137,29 @@ export function tableFromPaste(text: string): Table {
     .map((line) => line.split('\t').map((cell) => cell.trim()));
 }
 
+/**
+ * CSV 바이트 → 글. 셀메이트 CSV 처럼 EUC-KR(CP949)로 저장된 파일이 있어서
+ * UTF-8 로 먼저 읽어보고, 깨진 글자가 나오면 EUC-KR 로 다시 읽는다.
+ */
+function decodeCsv(buffer: ArrayBuffer): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder('euc-kr').decode(buffer);
+  }
+}
+
+function isCsvFile(file: File): boolean {
+  return /\.(csv|tsv|txt)$/i.test(file.name) || file.type === 'text/csv';
+}
+
 /** 파일(.xlsx .xls .csv) → 시트마다 표. 엑셀 라이브러리는 필요할 때만 불러온다 */
 export async function tablesFromFile(file: File): Promise<Table[]> {
   const XLSX = await import('xlsx');
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  const buffer = await file.arrayBuffer();
+  const workbook = isCsvFile(file)
+    ? XLSX.read(decodeCsv(buffer).replace(/^﻿/, ''), { type: 'string' })
+    : XLSX.read(buffer, { type: 'array' });
   return workbook.SheetNames.map((sheetName) => {
     const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
       header: 1,
@@ -288,12 +310,32 @@ export function hasDiff(row: CompareRow, uploaded: SiteKey[]): boolean {
 const DATA_KEY = 'welfin.siteStock.data.v1';
 const ALIAS_KEY = 'welfin.siteStock.alias.v1';
 
-export const loadSiteData = () => readJson<Partial<Record<SiteKey, SiteData>>>(DATA_KEY, {});
-export const saveSiteData = (data: Partial<Record<SiteKey, SiteData>>) => writeJson(DATA_KEY, data);
+/**
+ * 날짜별로 올려둔(아직 저장 전일 수 있는) 파일. 날짜를 바꿔도 작업하던 내용이 남는다.
+ * 예전 버전은 날짜 없이 한 칸(DATA_KEY)에만 있었으므로, 오늘 칸이 비어 있으면 그걸 읽는다.
+ */
+const draftKey = (date: string) => `${DATA_KEY}:${date}`;
 
-export const loadAliases = () =>
-  readJson<AliasMap>(ALIAS_KEY, { sellmate: {}, ecount: {}, ezadmin: {} });
-export const saveAliases = (aliases: AliasMap) => writeJson(ALIAS_KEY, aliases);
+export const loadSiteDraft = (date: string, isToday: boolean): SiteDataMap | null => {
+  const draft = readJson<SiteDataMap | null>(draftKey(date), null);
+  if (draft || !isToday) return draft;
+  const legacy = readJson<SiteDataMap | null>(DATA_KEY, null);
+  return legacy && Object.keys(legacy).length > 0 ? legacy : null;
+};
+export const saveSiteDraft = (date: string, data: SiteDataMap) => writeJson(draftKey(date), data);
+export const clearSiteDraft = (date: string) => {
+  localStorage.removeItem(draftKey(date));
+  localStorage.removeItem(DATA_KEY);
+};
+
+export const EMPTY_ALIASES: AliasMap = { sellmate: {}, ecount: {}, ezadmin: {} };
+
+/**
+ * 예전에는 연결을 브라우저에만 저장했다. 지금은 DB(site_product_links)에 저장하고,
+ * 브라우저에 남은 예전 연결은 처음 한 번 DB 로 옮긴 뒤 지운다.
+ */
+export const loadLegacyAliases = () => readJson<AliasMap>(ALIAS_KEY, EMPTY_ALIASES);
+export const clearLegacyAliases = () => localStorage.removeItem(ALIAS_KEY);
 
 /**
  * 표에서 사이트 수량을 직접 고친다.

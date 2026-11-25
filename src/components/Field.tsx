@@ -4,9 +4,11 @@ import {
   isValidElement,
   useId,
   type ChangeEvent,
-  type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+  type ComponentProps,
+  type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cx } from '@/lib/cx';
 import { Dropdown, type DropdownOption } from './Dropdown';
+import { SearchSelect } from './SearchSelect';
 import * as styles from './Field.css';
 
 interface FieldShellProps {
@@ -40,12 +42,32 @@ function FieldShell({ label, hint, error, className, children }: FieldShellProps
 
 type Common = { label?: string; hint?: ReactNode; error?: string | null; containerClassName?: string };
 
-export function TextField({ label, hint, error, containerClassName, className, ...rest }: Common & InputHTMLAttributes<HTMLInputElement>) {
+interface TextFieldProps extends Common, InputHTMLAttributes<HTMLInputElement> {
+  ref?: Ref<HTMLInputElement>;
+  /** 입력칸 안 오른쪽 끝에 넣는 버튼 (예: 돋보기) */
+  trailing?: ReactNode;
+}
+
+export function TextField({ label, hint, error, containerClassName, className, trailing, ...rest }: TextFieldProps) {
   return (
     <FieldShell label={label} hint={hint} error={error} className={containerClassName}>
-      {(id) => (
-        <input id={id} className={cx(styles.input, className)} aria-invalid={Boolean(error) || undefined} {...rest} />
-      )}
+      {(id) => {
+        const input = (
+          <input
+            id={id}
+            className={cx(styles.input, trailing ? styles.inputWithTrailing : undefined, className)}
+            aria-invalid={Boolean(error) || undefined}
+            {...rest}
+          />
+        );
+        if (!trailing) return input;
+        return (
+          <div className={styles.inputWrap}>
+            {input}
+            <span className={styles.trailing}>{trailing}</span>
+          </div>
+        );
+      }}
     </FieldShell>
   );
 }
@@ -110,6 +132,21 @@ export function SelectField({
           }
         />
       )}
+    </FieldShell>
+  );
+}
+
+/** 검색되는 선택칸 (제품처럼 항목이 많을 때) */
+export function SearchSelectField({
+  label,
+  hint,
+  error,
+  containerClassName,
+  ...rest
+}: Common & Omit<ComponentProps<typeof SearchSelect>, 'id' | 'invalid'>) {
+  return (
+    <FieldShell label={label} hint={hint} error={error} className={containerClassName}>
+      {(id) => <SearchSelect id={id} invalid={Boolean(error)} {...rest} />}
     </FieldShell>
   );
 }

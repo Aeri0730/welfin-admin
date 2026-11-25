@@ -14,7 +14,7 @@ export function describeRoute(m: Movement): string {
     case 'inbound':
       return `${m.partner?.name ?? '매입처'} → ${m.toWarehouse?.name ?? ''}`;
     case 'outbound':
-      return `${m.fromWarehouse?.name ?? ''} → 고객`;
+      return `${m.fromWarehouse?.name ?? ''} → ${m.salesChannel?.name ?? '고객'}`;
     case 'transfer':
       return `${m.fromWarehouse?.name ?? ''} → ${m.toWarehouse?.name ?? ''}`;
     case 'adjust':

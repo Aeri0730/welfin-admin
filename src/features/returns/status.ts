@@ -1,10 +1,13 @@
 import type { BadgeTone } from "@/components/ui";
+import { currentInvoice } from "@/api/returns";
 import {
   isKnownChannel,
   returnChannel,
   returnChannelLabel,
   type ReturnChannel,
   type Carrier,
+  type ReturnInvoice,
+  type TrackingEvent,
   type ReturnItem,
   type ReturnStatus,
 } from "@/api/types";
@@ -38,46 +41,58 @@ const PICKED_UP_CODES = new Set([
   "AVAILABLE_FOR_PICKUP",
 ]);
 
-/** 배송조회로 집화처리가 확인됐는지 (회수완료·검수완료 건은 당연히 집화된 것으로 본다) */
+/** 배송조회 결과 한 개 (지금 송장은 이동 경로까지, 이전 송장은 마지막 상태만) */
+interface Tracked {
+  code: string | null;
+  label: string | null;
+  events?: TrackingEvent[];
+}
+
+/** 한 건의 반송장 전부, 최근 것부터 */
+export function invoicesOf(item: ReturnItem): ReturnInvoice[] {
+  const current = currentInvoice(item);
+  return current ? [current, ...item.previousInvoices] : [...item.previousInvoices];
+}
+
+/** 한 건의 배송조회 결과 전부 (지금 송장 + 이전 송장) */
+function trackingsOf(item: ReturnItem): Tracked[] {
+  return [...(item.invoiceNo ? [item.tracking] : []), ...item.previousInvoices.map((i) => i.tracking)];
+}
+
+const pickedUp = (t: Tracked) =>
+  Boolean(t.code && PICKED_UP_CODES.has(t.code)) ||
+  (t.events ?? []).some((event) => PICKED_UP_CODES.has(event.code) || /집화/.test(event.label));
+const atPickup = (t: Tracked) =>
+  t.code === "AT_PICKUP" || (!t.code && Boolean(t.label && /집[화하]/.test(t.label)));
+const delivered = (t: Tracked) => t.code === "DELIVERED";
+/** 택배사가 가져가서 실제로 오고 있는 송장 */
+const moving = (t: Tracked) => pickedUp(t) && !atPickup(t) && !delivered(t);
+
+/** 배송조회로 집화처리가 확인됐는지 — 송장 하나라도 (회수완료·검수완료 건은 당연히 집화된 것으로 본다) */
 export function isPickedUp(item: ReturnItem): boolean {
   if (item.status === "collected" || item.status === "inspected") return true;
-  const t = item.tracking;
-  if (t.code && PICKED_UP_CODES.has(t.code)) return true;
-  return t.events.some(
-    (event) => PICKED_UP_CODES.has(event.code) || /집화/.test(event.label),
-  );
+  return trackingsOf(item).some(pickedUp);
 }
 
 const isOpen = (item: ReturnItem) =>
   item.status === "requested" || item.status === "in_transit";
 
-/** 미집화: 회수 송장은 나왔는데 배송조회에 아직 집화처리가 안 잡힌 건 */
+/** 미집화: 회수 송장은 나왔는데 어느 송장에도 아직 집화처리가 안 잡힌 건 */
 export function isUncollected(item: ReturnItem): boolean {
   return item.status === "in_transit" && !isPickedUp(item);
 }
 
-/** 배송조회 현재 상태가 집화처리(집화출발) — 택배사가 막 가져간 단계 */
-export function isAtPickup(item: ReturnItem): boolean {
-  const t = item.tracking;
-  if (t.code === "AT_PICKUP") return true;
-  return !t.code && Boolean(t.label && /집[화하]/.test(t.label));
-}
+/** 송장 하나라도 배송조회 현재 상태가 집화처리(집화출발) */
+export const isAtPickup = (item: ReturnItem) => trackingsOf(item).some(atPickup);
 
-/** 배송조회 현재 상태가 배송완료 (우리 쪽에 도착) */
-export const isDelivered = (item: ReturnItem) =>
-  item.tracking.code === "DELIVERED";
+/** 송장 하나라도 배송조회 현재 상태가 배송완료 (우리 쪽에 도착) */
+export const isDelivered = (item: ReturnItem) => trackingsOf(item).some(delivered);
 
 /**
- * 회수중: 송장이 있고, 미집화·집화출발·배송완료가 아닌 건 (실제로 이동 중인 건)
+ * 회수중: 송장 중 하나라도 실제로 이동 중인 건 (집화 이후, 집화출발·배송완료가 아닌 상태)
  */
 export function isReturning(item: ReturnItem): boolean {
-  return (
-    item.status === "in_transit" &&
-    Boolean(item.invoiceNo) &&
-    !isUncollected(item) &&
-    !isAtPickup(item) &&
-    !isDelivered(item)
-  );
+  return item.status === "in_transit" && trackingsOf(item).some(moving);
 }
 
 /**
@@ -157,9 +172,12 @@ export function trackingTone(code: string | null): BadgeTone {
 }
 
 /** 자동 배송조회가 되는 택배사 */
+export const isTrackableCarrier = (carrier: Carrier | null) =>
+  carrier === "cj" || carrier === "lotte";
+
+/** 자동 조회할 송장이 하나라도 있는 건 */
 export const isTrackable = (item: ReturnItem) =>
-  Boolean(item.invoiceNo) &&
-  (item.carrier === "cj" || item.carrier === "lotte");
+  invoicesOf(item).some((invoice) => isTrackableCarrier(invoice.carrier));
 
 export function carrierTrackingUrl(
   carrier: Carrier | null,
@@ -182,7 +200,7 @@ export function matchesSearch(item: ReturnItem, query: string): boolean {
     item.recipient,
     item.mgmtNo,
     item.orderNo,
-    item.invoiceNo,
+    ...invoicesOf(item).map((invoice) => invoice.invoiceNo),
     item.productText,
     item.address,
     item.reason,
@@ -195,7 +213,7 @@ export function matchesSearch(item: ReturnItem, query: string): boolean {
   if (text.includes(q)) return true;
   // 하이픈 없이 친 연락처/송장번호도 찾기
   if (qDigits.length >= 4) {
-    return [item.phone, item.invoiceNo, item.mgmtNo].some(
+    return [item.phone, item.mgmtNo, ...invoicesOf(item).map((invoice) => invoice.invoiceNo)].some(
       (v) => v && v.replace(/\D/g, "").includes(qDigits),
     );
   }

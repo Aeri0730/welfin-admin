@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type {
   Carrier,
   NewReturnInput,
+  ReturnInvoice,
   ReturnItem,
   ReturnKind,
   ReturnPatch,
@@ -13,6 +14,12 @@ function toError(error: { message: string; code?: string }): Error {
   if (error.code === '23505') return new Error('이미 등록된 관리번호가 있어요');
   if (error.code === '42501') return new Error('권한이 없어요. 관리자에게 문의해주세요');
   if (error.code === '42P01') return new Error('회수 테이블이 없어요. supabase/migrations/0003_returns.sql 을 먼저 실행해주세요');
+  if (error.code === '42703' && /original_invoice_no/.test(error.message)) {
+    return new Error('원송장번호 칸이 없어요. supabase/migrations/0022_return_original_invoice.sql 을 먼저 실행해주세요');
+  }
+  if (error.code === '42703' && /invoice_history/.test(error.message)) {
+    return new Error('이전 반송장 칸이 없어요. supabase/migrations/0025_return_invoice_history.sql 을 먼저 실행해주세요');
+  }
   if (error.code === '42703' && /channel/.test(error.message)) {
     return new Error('접수처 칸이 없어요. supabase/migrations/0018_return_channel.sql 을 먼저 실행해주세요');
   }
@@ -29,6 +36,73 @@ const COLUMNS = `
   tracking_code, tracking_label, tracking_location, tracking_time, tracking_events,
   tracking_checked_at, tracking_error, memo, rerequest_count, restocked, restocked_at, channel, created_at
 `;
+/** 마이그레이션을 실행해야 생기는 칸 (없으면 빼고 다시 읽는다) */
+const OPTIONAL_COLUMNS = ['original_invoice_no', 'invoice_history'];
+
+/** DB 에 저장된 이전 반송장 한 개 */
+interface InvoiceHistoryRow {
+  carrier: string | null;
+  invoice_no: string;
+  entered_at?: string | null;
+  tracking_code?: string | null;
+  tracking_label?: string | null;
+  tracking_location?: string | null;
+  tracking_time?: string | null;
+  tracking_checked_at?: string | null;
+  tracking_error?: string | null;
+}
+
+function fromHistory(raw: unknown): ReturnInvoice[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as InvoiceHistoryRow[])
+    .filter((h) => h && typeof h.invoice_no === 'string' && h.invoice_no)
+    .map((h) => ({
+      carrier: (h.carrier as Carrier | null) ?? null,
+      invoiceNo: h.invoice_no,
+      enteredAt: h.entered_at ?? null,
+      tracking: {
+        code: h.tracking_code ?? null,
+        label: h.tracking_label ?? null,
+        location: h.tracking_location ?? null,
+        time: h.tracking_time ?? null,
+        checkedAt: h.tracking_checked_at ?? null,
+        error: h.tracking_error ?? null,
+      },
+    }));
+}
+
+const toHistory = (list: ReturnInvoice[]): InvoiceHistoryRow[] =>
+  list.map((i) => ({
+    carrier: i.carrier,
+    invoice_no: i.invoiceNo,
+    entered_at: i.enteredAt,
+    tracking_code: i.tracking.code,
+    tracking_label: i.tracking.label,
+    tracking_location: i.tracking.location,
+    tracking_time: i.tracking.time,
+    tracking_checked_at: i.tracking.checkedAt,
+    tracking_error: i.tracking.error,
+  }));
+
+/** 화면에서 새로 넣은 송장 (아직 조회 전) */
+export const newInvoice = (invoiceNo: string, carrier: Carrier | null): ReturnInvoice => ({
+  carrier,
+  invoiceNo,
+  enteredAt: new Date().toISOString(),
+  tracking: { code: null, label: null, location: null, time: null, checkedAt: null, error: null },
+});
+
+/** 지금 송장을 이전 반송장 한 개로 (재접수로 새 송장이 나올 때 쌓아둔다) */
+export function currentInvoice(item: ReturnItem): ReturnInvoice | null {
+  if (!item.invoiceNo) return null;
+  const t = item.tracking;
+  return {
+    carrier: item.carrier,
+    invoiceNo: item.invoiceNo,
+    enteredAt: null,
+    tracking: { code: t.code, label: t.label, location: t.location, time: t.time, checkedAt: t.checkedAt, error: t.error },
+  };
+}
 
 interface ReturnRow {
   id: number;
@@ -63,6 +137,8 @@ interface ReturnRow {
   restocked: boolean | null;
   restocked_at: string | null;
   channel: string | null;
+  original_invoice_no?: string | null;
+  invoice_history?: unknown;
   created_at: string;
 }
 
@@ -102,6 +178,8 @@ function mapRow(row: ReturnRow): ReturnItem {
     restocked: Boolean(row.restocked),
     restockedAt: row.restocked_at,
     channel: row.channel,
+    originalInvoiceNo: row.original_invoice_no ?? null,
+    previousInvoices: fromHistory(row.invoice_history),
     createdAt: row.created_at,
   };
 }
@@ -113,15 +191,26 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** 진행 중인 건 전부 + 최근 INSPECTED_KEEP_DAYS 일 안에 검수완료된 건 */
 export async function fetchReturns(): Promise<ReturnItem[]> {
   const since = new Date(Date.now() - INSPECTED_KEEP_DAYS * DAY_MS).toISOString();
-  const { data, error } = await supabase
-    .from('returns')
-    .select(COLUMNS)
-    .or(`status.neq.inspected,inspected_at.gte.${since}`)
-    .order('received_on', { ascending: true })
-    .order('id', { ascending: true })
-    .limit(2000);
+  const load = (columns: string) =>
+    supabase
+      .from('returns')
+      .select(columns)
+      .or(`status.neq.inspected,inspected_at.gte.${since}`)
+      .order('received_on', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(2000);
+  // 아직 실행하지 않은 마이그레이션의 칸은 빼고 다시 읽는다
+  let optional = [...OPTIONAL_COLUMNS];
+  let result = await load([COLUMNS, ...optional].join(', '));
+  while (result.error?.code === '42703' && optional.length > 0) {
+    const message = result.error.message;
+    const missing = optional.find((column) => message.includes(column));
+    optional = missing ? optional.filter((column) => column !== missing) : [];
+    result = await load([COLUMNS, ...optional].join(', '));
+  }
+  const { data, error } = result;
   if (error) throw toError(error);
-  return (data as ReturnRow[]).map(mapRow);
+  return (data as unknown as ReturnRow[]).map(mapRow);
 }
 
 export async function createReturns(items: NewReturnInput[]): Promise<number> {
@@ -167,7 +256,9 @@ async function toColumns(current: Pick<ReturnItem, 'status' | 'invoiceNo'>, patc
   if (patch.carrier !== undefined) columns.carrier = patch.carrier;
   if (patch.memo !== undefined) columns.memo = patch.memo;
   if (patch.channel !== undefined) columns.channel = patch.channel;
+  if (patch.originalInvoiceNo !== undefined) columns.original_invoice_no = patch.originalInvoiceNo;
   if (patch.rerequestCount !== undefined) columns.rerequest_count = patch.rerequestCount;
+  if (patch.previousInvoices !== undefined) columns.invoice_history = toHistory(patch.previousInvoices);
   if (patch.restocked !== undefined) {
     columns.restocked = patch.restocked;
     columns.restocked_at = patch.restocked ? new Date().toISOString() : null;
@@ -235,6 +326,39 @@ export async function updateReturns(
     throw new Error(`${done}건만 저장됐어요: ${(failed.reason as Error).message}`);
   }
   return changes.length;
+}
+
+/**
+ * 한 건 직접 접수 (개별 입력 모달).
+ * 접수 칸으로 넣고, 송장·상태·메모·접수처 같은 나머지는 수정과 같은 규칙(updateReturn)으로 채운다.
+ */
+export async function createReturn({ input, patch }: { input: NewReturnInput; patch: ReturnPatch }): Promise<void> {
+  const { data, error } = await supabase
+    .from('returns')
+    .insert({
+      received_on: input.receivedOn,
+      source_format: input.sourceFormat,
+      mgmt_no: input.mgmtNo,
+      order_no: input.orderNo,
+      ordered_at: input.orderedAt,
+      shipped_at: input.shippedAt,
+      recipient: input.recipient,
+      phone: input.phone,
+      address: input.address,
+      product_text: input.productText,
+      sku: input.sku,
+      quantity: input.quantity,
+      kind: input.kind,
+      reason: input.reason,
+    })
+    .select('id, status, invoice_no')
+    .single();
+  if (error) throw toError(error);
+  try {
+    await updateReturn({ id: data.id, status: data.status, invoiceNo: data.invoice_no }, patch);
+  } catch (e) {
+    throw new Error(`접수는 됐지만 나머지 칸을 저장하지 못했어요. 목록에서 열어 다시 저장해주세요 (${(e as Error).message})`);
+  }
 }
 
 export async function deleteReturn(id: number): Promise<void> {

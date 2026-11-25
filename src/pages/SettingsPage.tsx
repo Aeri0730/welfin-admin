@@ -2,11 +2,14 @@ import { useState, type FormEvent } from 'react';
 import {
   useCreatePartner,
   useCreateProduct,
+  useCreateSalesChannel,
   useDeleteProduct,
   usePartners,
   useProducts,
+  useSalesChannels,
   useSetPartnerActive,
   useSetProductActive,
+  useSetSalesChannelActive,
 } from '@/api/queries';
 import { PRODUCT_CATEGORY_LABEL, type Product, type ProductCategory } from '@/api/types';
 import { ProductEditDialog } from '@/features/inventory/ProductEditDialog';
@@ -28,11 +31,14 @@ export function SettingsPage() {
     <div className={s.stack}>
       <PageHeader
         title="기준 정보"
-        description={isAdmin ? '제품과 매입처를 관리해요' : '기준 정보는 관리자만 수정할 수 있어요'}
+        description={isAdmin ? '제품과 매입처·판매처를 관리해요' : '기준 정보는 관리자만 수정할 수 있어요'}
       />
       <div className={s.twoColumn}>
         <ProductSection isAdmin={isAdmin} />
-        <PartnerSection isAdmin={isAdmin} />
+        <div className={s.stack}>
+          <PartnerSection isAdmin={isAdmin} />
+          <SalesChannelSection isAdmin={isAdmin} />
+        </div>
       </div>
     </div>
   );
@@ -174,10 +180,57 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function PartnerSection({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <CounterpartSection
+      isAdmin={isAdmin}
+      label="매입처"
+      placeholder="예: OO전자"
+      list={usePartners()}
+      create={useCreatePartner()}
+      setActive={useSetPartnerActive()}
+    />
+  );
+}
+
+function SalesChannelSection({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <CounterpartSection
+      isAdmin={isAdmin}
+      label="판매처"
+      placeholder="예: 쿠팡, 스마트스토어"
+      emptyDescription="여기서 등록한 판매처를 출고할 때 고를 수 있어요"
+      list={useSalesChannels()}
+      create={useCreateSalesChannel()}
+      setActive={useSetSalesChannelActive()}
+    />
+  );
+}
+
+/** 이름·메모만 있는 거래 상대 목록 (매입처, 판매처) */
+function CounterpartSection({
+  isAdmin,
+  label,
+  placeholder,
+  emptyDescription,
+  list,
+  create,
+  setActive,
+}: {
+  isAdmin: boolean;
+  label: string;
+  placeholder: string;
+  emptyDescription?: string;
+  list: { data?: Array<{ id: number; name: string; memo: string | null; isActive: boolean }>; error: Error | null };
+  create: {
+    mutate: (input: { name: string; memo: string }, options: { onSuccess: () => void }) => void;
+    error: Error | null;
+    isPending: boolean;
+  };
+  setActive: { mutate: (input: { id: number; isActive: boolean }) => void; isPending: boolean };
+}) {
   const toast = useToast();
-  const partners = usePartners();
-  const createPartner = useCreatePartner();
-  const setActive = useSetPartnerActive();
+  const partners = list;
+  const createPartner = create;
 
   const [name, setName] = useState('');
   const [memo, setMemo] = useState('');
@@ -198,23 +251,23 @@ function PartnerSection({ isAdmin }: { isAdmin: boolean }) {
   };
 
   return (
-    <Card title={`매입처 ${partners.data ? partners.data.length : ''}`}>
+    <Card title={`${label} ${partners.data ? partners.data.length : ''}`}>
       {isAdmin && (
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.formGrid}>
-            <TextField label="매입처명" placeholder="예: OO전자" value={name} onChange={(e) => setName(e.target.value)} />
+            <TextField label={`${label}명`} placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} />
             <TextField label="메모 (선택)" placeholder="담당자, 연락처 등" value={memo} onChange={(e) => setMemo(e.target.value)} />
           </div>
           {createPartner.error && <ErrorBox error={createPartner.error} />}
           <Button type="submit" variant="secondary" fullWidth disabled={!name.trim()} loading={createPartner.isPending}>
-            매입처 추가
+            {label} 추가
           </Button>
         </form>
       )}
 
       {partners.error && <ErrorBox error={partners.error} />}
       {partners.data?.length === 0 ? (
-        <EmptyState title="등록된 매입처가 없어요" />
+        <EmptyState title={`등록된 ${label}가 없어요`} description={emptyDescription} />
       ) : (
         <ul>
           {(partners.data ?? []).map((p) => (

@@ -16,6 +16,8 @@ import { StoragePage } from '@/pages/StoragePage';
 import { StorageDayPage } from '@/pages/StorageDayPage';
 import { SettlementPage } from '@/pages/SettlementPage';
 import { DispatchPage } from '@/pages/DispatchPage';
+import { TransferStatusPage } from '@/pages/TransferStatusPage';
+import { OrderRequestsPage } from '@/pages/OrderRequestsPage';
 
 export function App() {
   useSyncSession();
@@ -41,6 +43,8 @@ export function App() {
             <Route path="settlement/dispatch" element={<DispatchPage />} />
             <Route path="returns" element={<ReturnsPage />} />
             <Route path="transfer" element={<MovementPage key="transfer" type="transfer" />} />
+            <Route path="transfer/status" element={<TransferStatusPage />} />
+            <Route path="orders" element={<OrderRequestsPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -5,6 +5,7 @@
  * - 로그인한 사용자의 토큰으로 Supabase 에 접근하므로 RLS 가 그대로 적용된다.
  * - tracker.delivery 키는 서버에만 있다 (브라우저에 노출되지 않음).
  * - '배달완료'가 되면 회수중 → 회수완료로 자동 변경한다.
+ * - 재접수 전 송장(invoice_history)도 같이 조회한다. 그중 하나라도 배달완료면 회수완료.
  *
  * Vercel 환경변수
  *   TRACKER_DELIVERY_CLIENT_ID / TRACKER_DELIVERY_CLIENT_SECRET   (tracker.delivery 콘솔에서 발급)
@@ -106,6 +107,38 @@ async function track(carrier: string, invoiceNo: string, auth: string): Promise<
   return { ok: true, last: info.lastEvent ? toEvent(info.lastEvent) : (events[0] ?? null), events };
 }
 
+/** 재접수 전 송장 한 개 (0025 invoice_history) */
+interface HistoryEntry {
+  carrier: string | null;
+  invoice_no: string;
+  [key: string]: unknown;
+}
+
+/** 이전 송장은 최근 것부터 이만큼만 조회한다 */
+const HISTORY_TRACK_LIMIT = 4;
+
+function historyWith(entry: HistoryEntry, outcome: TrackOutcome, now: string): HistoryEntry {
+  if (outcome.ok) {
+    const last = outcome.last;
+    return {
+      ...entry,
+      tracking_code: last?.code ?? null,
+      tracking_label: last?.label ?? null,
+      tracking_location: last?.location ?? null,
+      tracking_time: last?.time ?? null,
+      tracking_checked_at: now,
+      tracking_error: null,
+    };
+  }
+  return {
+    ...entry,
+    tracking_code: outcome.notFound ? 'NOT_FOUND' : null,
+    tracking_label: outcome.notFound ? '집화 전' : null,
+    tracking_checked_at: now,
+    tracking_error: outcome.notFound ? null : outcome.message,
+  };
+}
+
 const json = (status: number, data: unknown) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -136,12 +169,20 @@ export async function POST(request: Request): Promise<Response> {
     : [];
   if (ids.length === 0) return json(400, { error: '조회할 건이 없어요' });
 
-  const { data: rows, error } = await supabase
-    .from('returns')
-    .select('id, status, carrier, invoice_no')
-    .in('id', ids)
-    .not('invoice_no', 'is', null);
-  if (error) return json(500, { error: error.message });
+  const load = (columns: string) =>
+    supabase.from('returns').select(columns).in('id', ids).not('invoice_no', 'is', null);
+  let result = await load('id, status, carrier, invoice_no, invoice_history');
+  // 0025 실행 전이면 이전 송장 없이
+  const hasHistory = result.error?.code !== '42703';
+  if (!hasHistory) result = await load('id, status, carrier, invoice_no');
+  if (result.error) return json(500, { error: result.error.message });
+  const rows = result.data as unknown as Array<{
+    id: number;
+    status: string;
+    carrier: string | null;
+    invoice_no: string | null;
+    invoice_history?: unknown;
+  }>;
 
   const auth = `TRACKQL-API-KEY ${clientId}:${clientSecret}`;
   let updated = 0;
@@ -153,10 +194,24 @@ export async function POST(request: Request): Promise<Response> {
   const queue = [...rows];
   const worker = async () => {
     for (let row = queue.shift(); row; row = queue.shift()) {
-      const outcome = await track(row.carrier ?? 'cj', row.invoice_no as string, auth).catch(
-        (e: unknown): TrackOutcome => ({ ok: false, notFound: false, message: e instanceof Error ? e.message : '조회 실패' }),
-      );
+      const safeTrack = (carrier: string | null, invoiceNo: string) =>
+        track(carrier ?? 'cj', invoiceNo, auth).catch(
+          (e: unknown): TrackOutcome => ({ ok: false, notFound: false, message: e instanceof Error ? e.message : '조회 실패' }),
+        );
+      const outcome = await safeTrack(row.carrier, row.invoice_no as string);
       const now = new Date().toISOString();
+
+      // 재접수 전 송장들 (조회되는 택배사만, 최근 것부터 몇 개)
+      const history = Array.isArray(row.invoice_history) ? (row.invoice_history as HistoryEntry[]) : [];
+      let historyDelivered: string | null = null;
+      const nextHistory = [...history];
+      for (let i = 0; i < Math.min(history.length, HISTORY_TRACK_LIMIT); i += 1) {
+        const entry = history[i];
+        if (!entry?.invoice_no || !CARRIER_ID[entry.carrier ?? 'cj']) continue;
+        const past = await safeTrack(entry.carrier, entry.invoice_no);
+        nextHistory[i] = historyWith(entry, past, now);
+        if (past.ok && past.last?.code === 'DELIVERED') historyDelivered = past.last.time ?? now;
+      }
       let columns: Record<string, unknown>;
 
       if (outcome.ok) {
@@ -170,11 +225,6 @@ export async function POST(request: Request): Promise<Response> {
           tracking_checked_at: now,
           tracking_error: null,
         };
-        if (last?.code === 'DELIVERED' && (row.status === 'requested' || row.status === 'in_transit')) {
-          columns.status = 'collected';
-          columns.collected_at = last.time ?? now;
-          collected += 1;
-        }
       } else {
         if (!outcome.notFound) {
           failed += 1;
@@ -186,6 +236,16 @@ export async function POST(request: Request): Promise<Response> {
           tracking_checked_at: now,
           tracking_error: outcome.notFound ? null : outcome.message,
         };
+      }
+
+      if (hasHistory && history.length > 0) columns.invoice_history = nextHistory;
+
+      // 송장 중 하나라도 배달완료면 회수완료
+      const deliveredAt = outcome.ok && outcome.last?.code === 'DELIVERED' ? (outcome.last.time ?? now) : historyDelivered;
+      if (deliveredAt && (row.status === 'requested' || row.status === 'in_transit')) {
+        columns.status = 'collected';
+        columns.collected_at = deliveredAt;
+        collected += 1;
       }
 
       const { error: updateError } = await supabase.from('returns').update(columns).eq('id', row.id);

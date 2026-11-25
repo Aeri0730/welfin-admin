@@ -287,6 +287,44 @@ export const editButton = style({
   ':focus-visible': { outline: 'none', boxShadow: `inset 0 0 0 2px ${vars.color.blue500}` },
 });
 
+/** 고칠 수 없는 칸 (지난 날짜 저장본): 수정 칸과 자리만 같게 */
+export const staticQty = style({
+  display: 'inline-flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  minWidth: 72,
+  padding: '6px 10px',
+  margin: '0 -10px',
+  textAlign: 'right',
+});
+
+export const boardActions = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+});
+
+export const savedNote = style({
+  fontSize: 13,
+  color: vars.color.grey500,
+});
+
+/** 지난 날짜를 볼 때 맨 위 안내 */
+export const historyBanner = style({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  flexWrap: 'wrap',
+  padding: '14px 18px',
+  borderRadius: vars.radius.md,
+  background: vars.color.blue50,
+  color: vars.color.grey800,
+  fontSize: 14,
+  fontWeight: 500,
+});
+
 export const editInput = style({
   width: 96,
   height: 38,
@@ -315,7 +353,7 @@ export const editedDot = style({
 
 /* 사이트 시트: 우리 제품 연결 */
 /** 사이트 시트: 우리 제품 연결 드롭다운 */
-export const linkSelect = style({ maxWidth: 280 });
+export const linkSelect = style({ width: 280, maxWidth: '100%', display: 'inline-block', verticalAlign: 'middle' });
 
 export const empty = style({ padding: '56px 20px', textAlign: 'center' });
 export const emptyTitle = style({ fontSize: 17, fontWeight: 700, color: vars.color.grey800 });

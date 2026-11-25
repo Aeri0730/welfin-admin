@@ -17,7 +17,8 @@ export function CompareTable({
   uploaded: SiteKey[];
   /** 창고를 하나 골랐을 때만 우리 재고를 고칠 수 있다 */
   canEditOurs: boolean;
-  onEditSite: (site: SiteKey, row: CompareRow, value: number) => void;
+  /** 없으면 사이트 수량도 보기만 한다 (지난 날짜 저장본) */
+  onEditSite?: (site: SiteKey, row: CompareRow, value: number) => void;
   onEditOurs: (row: CompareRow, value: number) => void;
 }) {
   return (
@@ -55,20 +56,29 @@ export function CompareTable({
               {uploaded.map((k) => {
                 const value = row.sites[k]?.quantity ?? 0;
                 const diff = row.ours !== null ? value - row.ours : 0;
+                const content = (
+                  <>
+                    <span className={diff !== 0 ? st.diffValue : undefined}>
+                      {row.sites[k]?.edited && <span className={st.editedDot} />}
+                      {formatNumber(value)}
+                    </span>
+                    {diff !== 0 && (
+                      <span className={st.diffTag}>
+                        {diff > 0 ? '+' : ''}
+                        {formatNumber(diff)}
+                      </span>
+                    )}
+                  </>
+                );
                 return (
                   <td key={k} className={cx(st.td, st.num)} title={row.sites[k]?.names.join('\n')}>
-                    <EditableQty value={value} cellId={`${k}:${i}`} label={`${row.name} ${SITES[k].label}`} onCommit={(v) => onEditSite(k, row, v)}>
-                      <span className={diff !== 0 ? st.diffValue : undefined}>
-                        {row.sites[k]?.edited && <span className={st.editedDot} />}
-                        {formatNumber(value)}
-                      </span>
-                      {diff !== 0 && (
-                        <span className={st.diffTag}>
-                          {diff > 0 ? '+' : ''}
-                          {formatNumber(diff)}
-                        </span>
-                      )}
-                    </EditableQty>
+                    {onEditSite ? (
+                      <EditableQty value={value} cellId={`${k}:${i}`} label={`${row.name} ${SITES[k].label}`} onCommit={(v) => onEditSite(k, row, v)}>
+                        {content}
+                      </EditableQty>
+                    ) : (
+                      <span className={st.staticQty}>{content}</span>
+                    )}
                   </td>
                 );
               })}

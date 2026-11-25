@@ -61,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   { to: '/returns', label: '회수', icon: 'return' },
   { to: '/transfer', label: '창고 이동', icon: 'transfer' },
+  { to: '/orders', label: '발주 신청', icon: 'order' },
   { to: '/history', label: '입출고 내역', icon: 'list' },
   { to: '/settings', label: '기준 정보', icon: 'settings' },
 ];

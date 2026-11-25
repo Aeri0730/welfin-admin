@@ -405,3 +405,37 @@ export const dialogTitle = style({
   alignItems: 'center',
   gap: 8,
 });
+
+/* 재접수 전에 쓰던 반송장 (최근 송장 아래로 쌓인다) */
+export const prevInvoice = style({
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 6,
+  paddingTop: 6,
+  borderTop: `1px solid ${vars.color.grey100}`,
+  fontSize: 13,
+  color: vars.color.grey600,
+  fontVariantNumeric: 'tabular-nums',
+});
+
+export const invoiceOrder = style({
+  fontSize: 12,
+  fontWeight: 600,
+  color: vars.color.grey500,
+});
+
+export const invoiceFields = style({
+  gridColumn: '1 / -1',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+});
+
+export const invoiceFieldRow = style({
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: 8,
+});
+
+export const invoiceFieldGrow = style({ flex: 1, minWidth: 0 });
