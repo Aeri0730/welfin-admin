@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { readAllPages } from './paging';
 import type {
   Carrier,
   NewReturnInput,
@@ -197,20 +198,19 @@ export async function fetchReturns(): Promise<ReturnItem[]> {
       .select(columns)
       .or(`status.neq.inspected,inspected_at.gte.${since}`)
       .order('received_on', { ascending: true })
-      .order('id', { ascending: true })
-      .limit(2000);
+      .order('id', { ascending: true });
+  const loadAll = (columns: string) => readAllPages<ReturnRow>((from, to) => load(columns).range(from, to));
   // 아직 실행하지 않은 마이그레이션의 칸은 빼고 다시 읽는다
   let optional = [...OPTIONAL_COLUMNS];
-  let result = await load([COLUMNS, ...optional].join(', '));
+  let result = await loadAll([COLUMNS, ...optional].join(', '));
   while (result.error?.code === '42703' && optional.length > 0) {
     const message = result.error.message;
     const missing = optional.find((column) => message.includes(column));
     optional = missing ? optional.filter((column) => column !== missing) : [];
-    result = await load([COLUMNS, ...optional].join(', '));
+    result = await loadAll([COLUMNS, ...optional].join(', '));
   }
-  const { data, error } = result;
-  if (error) throw toError(error);
-  return (data as unknown as ReturnRow[]).map(mapRow);
+  if (result.error) throw toError(result.error);
+  return result.rows.map(mapRow);
 }
 
 export async function createReturns(items: NewReturnInput[]): Promise<number> {

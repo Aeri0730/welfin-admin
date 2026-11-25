@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { readAllPages } from './paging';
 import type {
   CreateMovementsInput,
   CreatePartnerInput,
@@ -218,13 +219,17 @@ const MOVEMENT_SELECT = `${MOVEMENT_BASE_SELECT}, sales_channel:sales_channels(i
  * 입출고 기록 조회. 0021(판매처)을 아직 실행하지 않았으면 판매처 없이 다시 읽는다.
  * build 는 select 할 칸을 받아 조건을 붙인 쿼리를 돌려준다.
  */
-async function selectMovements(
-  build: (columns: string) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>,
-): Promise<Movement[]> {
-  let result = await build(MOVEMENT_SELECT);
-  if (result.error && isMissing(result.error)) result = await build(MOVEMENT_BASE_SELECT);
+type PagedQuery = {
+  range: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string; code?: string } | null }>;
+};
+
+/** 조건에 맞는 입출고를 끝까지 (1000줄씩 이어서) 읽는다 */
+async function selectMovements(build: (columns: string) => PagedQuery): Promise<Movement[]> {
+  const loadAll = (columns: string) => readAllPages<MovementRow>((from, to) => build(columns).range(from, to));
+  let result = await loadAll(MOVEMENT_SELECT);
+  if (result.error && isMissing(result.error)) result = await loadAll(MOVEMENT_BASE_SELECT);
   if (result.error) throw toError(result.error);
-  return (result.data as MovementRow[]).map(toMovement);
+  return result.rows.map(toMovement);
 }
 
 function toMovement(row: MovementRow): Movement {
@@ -255,8 +260,7 @@ export async function fetchPendingMovements(type?: MovementType): Promise<Moveme
       .select(columns)
       .gt('scheduled_at', now)
       .order('scheduled_at', { ascending: true })
-      .order('id', { ascending: true })
-      .limit(500);
+      .order('id', { ascending: true });
     if (type) query = query.eq('type', type);
     return query;
   });
@@ -303,8 +307,7 @@ export async function fetchMovements(filter: MovementFilter): Promise<Movement[]
       .gte('moved_on', filter.from)
       .lte('moved_on', filter.to)
       .order('moved_on', { ascending: false })
-      .order('id', { ascending: false })
-      .limit(1000);
+      .order('id', { ascending: false });
 
     if (filter.type) query = query.eq('type', filter.type);
     if (filter.warehouseId) {

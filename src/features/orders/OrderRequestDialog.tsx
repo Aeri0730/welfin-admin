@@ -1,16 +1,16 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { OrderRequest } from '@/api/orderRequests';
 import { useDeleteOrderRequest, useProducts, useSaveOrderRequest } from '@/api/queries';
 import { Button } from '@/components/Button';
 import { Dialog } from '@/components/Dialog';
 import { SearchSelectField, TextAreaField, TextField } from '@/components/Field';
 import { Icon } from '@/components/Icon';
-import { PostcodeSearch } from '@/components/PostcodeSearch';
 import { useToast } from '@/components/Toast';
 import { ErrorBox } from '@/components/ui';
 import { formatPhone } from '@/features/returns/parse';
 import { formatNumber, today } from '@/lib/format';
-import * as s from '@/pages/SettlementPage.css';
+import { loadPostcode, openPostcodePopup } from '@/lib/postcode';
+import * as s from './orders.css';
 
 const onlyDigits = (value: string, max: number) => value.replace(/\D/g, '').slice(0, max);
 const money = (value: string) => (value ? formatNumber(Number(value)) : '');
@@ -27,6 +27,7 @@ function initialForm(item: OrderRequest | null) {
     productOption: item?.productOption ?? '',
     price: item?.price === null || item?.price === undefined ? '' : String(item.price),
     quantity: item ? String(item.quantity) : '1',
+    invoiceNo: item?.invoiceNo ?? '',
   };
 }
 
@@ -51,13 +52,17 @@ export function OrderRequestDialog({ item, onClose }: { item: OrderRequest | nul
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const set = (patch: Partial<Form>) => setF((prev) => ({ ...prev, ...patch }));
-  const [searchingPostcode, setSearchingPostcode] = useState(false);
+  const [postcodeError, setPostcodeError] = useState<Error | null>(null);
   const addressRef = useRef<HTMLInputElement>(null);
+
+  // 돋보기를 누른 순간 바로 새 창을 열 수 있게 검색 스크립트를 미리 불러 둔다
+  useEffect(() => {
+    loadPostcode().catch(() => undefined);
+  }, []);
 
   /** 검색으로 고른 주소: 뒤에 상세주소(동·호수)를 이어 쓰도록 주소칸에 커서를 둔다 */
   const handlePostcodeSelect = ({ zipCode, address }: { zipCode: string; address: string }) => {
     set({ zipCode, address: `${address} ` });
-    setSearchingPostcode(false);
     requestAnimationFrame(() => {
       const input = addressRef.current;
       if (!input) return;
@@ -95,6 +100,8 @@ export function OrderRequestDialog({ item, onClose }: { item: OrderRequest | nul
         productOption: f.productOption,
         price: f.price ? Number(f.price) : null,
         quantity: Number(f.quantity),
+        // 바꾼 경우에만 보낸다
+        invoiceNo: f.invoiceNo.trim() !== (item?.invoiceNo ?? '') ? f.invoiceNo : undefined,
       },
       {
         onSuccess: () => {
@@ -119,7 +126,7 @@ export function OrderRequestDialog({ item, onClose }: { item: OrderRequest | nul
     });
   };
 
-  const error = problem ? new Error(problem) : (save.error ?? remove.error);
+  const error = problem ? new Error(problem) : (postcodeError ?? save.error ?? remove.error);
 
   return (
     <Dialog
@@ -171,8 +178,10 @@ export function OrderRequestDialog({ item, onClose }: { item: OrderRequest | nul
               type="button"
               className={s.iconButton}
               aria-label="우편번호 검색"
-              aria-expanded={searchingPostcode}
-              onClick={() => setSearchingPostcode((open) => !open)}
+              onClick={() => {
+                setPostcodeError(null);
+                openPostcodePopup(handlePostcodeSelect).catch(setPostcodeError);
+              }}
             >
               <Icon name="search" size={18} />
             </button>
@@ -186,9 +195,6 @@ export function OrderRequestDialog({ item, onClose }: { item: OrderRequest | nul
           value={f.address}
           onChange={(e) => set({ address: e.target.value })}
         />
-        {searchingPostcode && (
-          <PostcodeSearch onSelect={handlePostcodeSelect} onClose={() => setSearchingPostcode(false)} />
-        )}
 
         <p className={s.groupTitle}>상품</p>
         <SearchSelectField
@@ -213,6 +219,15 @@ export function OrderRequestDialog({ item, onClose }: { item: OrderRequest | nul
           inputMode="numeric"
           value={money(f.quantity)}
           onChange={(e) => set({ quantity: onlyDigits(e.target.value, 6) })}
+        />
+        <p className={s.groupTitle}>배송</p>
+        <TextField
+          label="송장번호"
+          inputMode="numeric"
+          containerClassName={s.wide2}
+          placeholder="출고 후 송장번호를 넣어주세요"
+          value={f.invoiceNo}
+          onChange={(e) => set({ invoiceNo: e.target.value.replace(/[^0-9A-Za-z-]/g, '') })}
         />
         <TextAreaField
           label="상세요구사항"

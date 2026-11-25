@@ -25,12 +25,19 @@ export async function signOut(): Promise<void> {
   if (error) throw error;
 }
 
+interface ProfileRow {
+  id: string;
+  name: string;
+  role: Profile['role'];
+  can_confirm_orders?: boolean;
+}
+
 export async function fetchProfile(userId: string): Promise<Profile> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, name, role')
-    .eq('id', userId)
-    .single();
-  if (error) throw error;
-  return data as Profile;
+  const load = (columns: string) => supabase.from('profiles').select(columns).eq('id', userId).single<ProfileRow>();
+  let result = await load('id, name, role, can_confirm_orders');
+  // 0028 실행 전이면 확인 권한 없이
+  if (result.error?.code === '42703') result = await load('id, name, role');
+  if (result.error) throw result.error;
+  const row = result.data;
+  return { id: row.id, name: row.name, role: row.role, canConfirmOrders: row.can_confirm_orders ?? false };
 }

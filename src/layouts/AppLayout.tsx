@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { signOut } from '@/api/auth';
@@ -6,6 +6,7 @@ import { useScheduledRefresh } from '@/api/queries';
 import { Button } from '@/components/Button';
 import { Icon, type IconName } from '@/components/Icon';
 import { ToastViewport } from '@/components/Toast';
+import { Skeleton } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
 import { cx } from '@/lib/cx';
 import * as styles from './AppLayout.css';
@@ -86,6 +87,19 @@ const TAB_ITEMS: TabItem[] = [
   { to: '/returns', label: '회수', icon: 'return' },
 ];
 
+/** 칸이 많은 표라 본문을 넓게 쓰는 페이지 */
+const WIDE_PAGES = new Set(['/orders']);
+
+/** 페이지 코드를 불러오는 동안 */
+function PageLoading() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }} aria-busy>
+      <Skeleton height={32} width={180} />
+      <Skeleton height={240} />
+    </div>
+  );
+}
+
 export function AppLayout() {
   useScheduledRefresh();
   const { data: profile } = useProfile();
@@ -143,8 +157,10 @@ export function AppLayout() {
           <span className={styles.topBarTitle}>Welfin 재고</span>
         </header>
 
-        <main className={styles.main}>
-          <Outlet />
+        <main className={cx(styles.main, WIDE_PAGES.has(location.pathname) && styles.mainWide)}>
+          <Suspense fallback={<PageLoading />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

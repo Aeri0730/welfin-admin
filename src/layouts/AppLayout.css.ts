@@ -141,6 +141,9 @@ export const main = style({
   },
 });
 
+/** 표가 넓은 페이지 (발주 신청) */
+export const mainWide = style({ maxWidth: 1600 });
+
 /* ---------- 모바일 하단 탭 ---------- */
 export const tabBar = style({
   position: 'fixed',

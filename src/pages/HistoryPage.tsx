@@ -208,11 +208,6 @@ export function HistoryPage() {
             </div>
           </>
         )}
-        {list.length >= 1000 && (
-          <p className={s.muted} style={{ marginTop: 12 }}>
-            최근 1,000건까지만 보여줘요. 기간을 좁혀서 확인해주세요.
-          </p>
-        )}
       </Card>
     </div>
   );

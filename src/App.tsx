@@ -1,23 +1,26 @@
+import { lazy } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { RequireAuth } from '@/features/auth/RequireAuth';
 import { useSyncSession } from '@/features/auth/session';
 import { AppLayout } from '@/layouts/AppLayout';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { HistoryPage } from '@/pages/HistoryPage';
-import { MovementPage } from '@/pages/MovementPage';
-import { MovementStatusPage } from '@/pages/MovementStatusPage';
-import { ReturnsPage } from '@/pages/ReturnsPage';
-import { SalesPage } from '@/pages/SalesPage';
-import { SettingsPage } from '@/pages/SettingsPage';
-import { StockPage } from '@/pages/StockPage';
-import { StockComparePage } from '@/pages/StockComparePage';
-import { StoragePage } from '@/pages/StoragePage';
-import { StorageDayPage } from '@/pages/StorageDayPage';
-import { SettlementPage } from '@/pages/SettlementPage';
-import { DispatchPage } from '@/pages/DispatchPage';
-import { TransferStatusPage } from '@/pages/TransferStatusPage';
-import { OrderRequestsPage } from '@/pages/OrderRequestsPage';
+
+/** 페이지는 처음 들어갈 때 불러온다 (첫 화면 용량 줄이기) */
+const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const MovementPage = lazy(() => import('@/pages/MovementPage').then((m) => ({ default: m.MovementPage })));
+const MovementStatusPage = lazy(() => import('@/pages/MovementStatusPage').then((m) => ({ default: m.MovementStatusPage })));
+const ReturnsPage = lazy(() => import('@/pages/ReturnsPage').then((m) => ({ default: m.ReturnsPage })));
+const SalesPage = lazy(() => import('@/pages/SalesPage').then((m) => ({ default: m.SalesPage })));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const StockPage = lazy(() => import('@/pages/StockPage').then((m) => ({ default: m.StockPage })));
+const StockComparePage = lazy(() => import('@/pages/StockComparePage').then((m) => ({ default: m.StockComparePage })));
+const StoragePage = lazy(() => import('@/pages/StoragePage').then((m) => ({ default: m.StoragePage })));
+const StorageDayPage = lazy(() => import('@/pages/StorageDayPage').then((m) => ({ default: m.StorageDayPage })));
+const SettlementPage = lazy(() => import('@/pages/SettlementPage').then((m) => ({ default: m.SettlementPage })));
+const DispatchPage = lazy(() => import('@/pages/DispatchPage').then((m) => ({ default: m.DispatchPage })));
+const TransferStatusPage = lazy(() => import('@/pages/TransferStatusPage').then((m) => ({ default: m.TransferStatusPage })));
+const OrderRequestsPage = lazy(() => import('@/pages/OrderRequestsPage').then((m) => ({ default: m.OrderRequestsPage })));
 
 export function App() {
   useSyncSession();

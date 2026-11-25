@@ -423,3 +423,11 @@ export function useDeleteOrderRequest() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['orderRequests'] }),
   });
 }
+
+export function useSetOrderConfirmed() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: orderRequests.setOrderConfirmed,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['orderRequests'] }),
+  });
+}

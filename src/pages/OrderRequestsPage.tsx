@@ -4,12 +4,14 @@ import { useOrderRequests } from '@/api/queries';
 import { Button } from '@/components/Button';
 import { Icon } from '@/components/Icon';
 import { Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
+import { useProfile } from '@/features/auth/session';
+import { ConfirmChip } from '@/features/orders/ConfirmChip';
 import { OrderRequestDialog } from '@/features/orders/OrderRequestDialog';
+import * as s from '@/features/orders/orders.css';
 import { downloadCsv } from '@/lib/csv';
 import { cx } from '@/lib/cx';
 import { formatDateLabel, formatNumber, today } from '@/lib/format';
 import * as p from './pages.css';
-import * as s from './SettlementPage.css';
 
 /** 엑셀 칸 (발주처에 보내는 형식 그대로. 신청자는 넣지 않는다) */
 const EXCEL_HEADER = ['고유번호', '수령자', '우편번호', '주소', '전화번호', '휴대폰', '상세요구사항', '판매처상품명', '상품옵션', '가격', '수량'];
@@ -37,9 +39,11 @@ export function OrderRequestsPage() {
   const date = today();
   const query = useOrderRequests(date);
   const [editing, setEditing] = useState<OrderRequest | 'new' | null>(null);
+  const canConfirm = useProfile().data?.canConfirmOrders ?? false;
 
   const rows = query.data ?? [];
   const totalQty = rows.reduce((sum, o) => sum + o.quantity, 0);
+  const confirmedCount = rows.filter((o) => o.confirmedAt !== null).length;
 
   const handleDownload = () => downloadCsv(`발주신청_${date}.csv`, EXCEL_HEADER, rows.map(toExcelRow));
 
@@ -47,7 +51,7 @@ export function OrderRequestsPage() {
     <div className={p.stack}>
       <PageHeader
         title="발주 신청"
-        description="오늘 신청한 발주를 모아서 봐요. 줄을 누르면 고칠 수 있어요"
+        description="금일 2시까지 신청한 발주를 모아서 봐요. 줄을 누르면 고치거나 송장번호를 넣을 수 있어요"
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className={s.todayLabel}>{formatDateLabel(date)}</span>
@@ -68,7 +72,10 @@ export function OrderRequestsPage() {
       <Card>
         <div className={p.sectionHeader}>
           <h2 className={p.sectionTitle}>
-            금일 발주 신청 {rows.length}건 <span className={p.muted}>수량 {formatNumber(totalQty)}개</span>
+            금일 발주 신청 {rows.length}건{' '}
+            <span className={p.muted}>
+              수량 {formatNumber(totalQty)}개 · 확인 {confirmedCount}/{rows.length}
+            </span>
           </h2>
         </div>
 
@@ -82,6 +89,7 @@ export function OrderRequestsPage() {
               <table className={p.table}>
                 <thead>
                   <tr>
+                    <th className={p.th}>확인</th>
                     <th className={p.th}>고유번호</th>
                     <th className={p.th}>수령자</th>
                     <th className={p.th}>우편번호</th>
@@ -93,25 +101,30 @@ export function OrderRequestsPage() {
                     <th className={p.th}>상품옵션</th>
                     <th className={cx(p.th, p.num)}>가격</th>
                     <th className={cx(p.th, p.num)}>수량</th>
+                    <th className={p.th}>송장번호</th>
                     <th className={p.th}>신청자</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((o) => (
                     <tr key={o.id} className={s.clickRow} onClick={() => setEditing(o)}>
+                      <td className={p.td}>
+                        <ConfirmChip order={o} canConfirm={canConfirm} />
+                      </td>
                       <td className={p.td} title={o.id}>
                         <span className={s.code}>{shortId(o.id)}</span>
                       </td>
                       <td className={cx(p.td, p.strong, s.nowrap)}>{o.recipient}</td>
                       <td className={cx(p.td, s.nowrap)}>{dash(o.zipCode)}</td>
-                      <td className={cx(p.td, p.wrapCell)}>{o.address}</td>
+                      <td className={cx(p.td, s.longCell)}>{o.address}</td>
                       <td className={cx(p.td, s.nowrap)}>{dash(o.phone)}</td>
                       <td className={cx(p.td, s.nowrap)}>{dash(o.mobile)}</td>
-                      <td className={cx(p.td, p.wrapCell)}>{dash(o.requestNote)}</td>
-                      <td className={cx(p.td, p.wrapCell)}>{o.productName}</td>
-                      <td className={p.td}>{dash(o.productOption)}</td>
+                      <td className={cx(p.td, s.longCell)}>{dash(o.requestNote)}</td>
+                      <td className={cx(p.td, s.longCell)}>{o.productName}</td>
+                      <td className={cx(p.td, s.longCell)}>{dash(o.productOption)}</td>
                       <td className={cx(p.td, p.num)}>{o.price === null ? '-' : formatNumber(o.price)}</td>
                       <td className={cx(p.td, p.num, p.strong)}>{formatNumber(o.quantity)}</td>
+                      <td className={cx(p.td, s.nowrap)}>{dash(o.invoiceNo)}</td>
                       <td className={cx(p.td, s.nowrap)}>{dash(o.requester)}</td>
                     </tr>
                   ))}
@@ -137,8 +150,12 @@ export function OrderRequestsPage() {
                       {[o.mobile, o.phone, o.requester && `신청 ${o.requester}`].filter(Boolean).join(' · ')}
                     </p>
                     {o.requestNote && <p className={p.listMeta}>{o.requestNote}</p>}
+                    {o.invoiceNo && <p className={p.listMeta}>송장 {o.invoiceNo}</p>}
                   </div>
-                  <span className={p.listRight}>{formatNumber(o.quantity)}개</span>
+                  <div className={p.listRight} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                    <ConfirmChip order={o} canConfirm={canConfirm} />
+                    {formatNumber(o.quantity)}개
+                  </div>
                 </li>
               ))}
             </ul>

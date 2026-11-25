@@ -51,11 +51,16 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
   const setActive = useSetProductActive();
   const deleteProduct = useDeleteProduct();
 
+  /** 삭제는 두 번 눌러서 (다른 화면과 같은 방식). 처음 누르면 '정말 삭제' 로 바뀐다 */
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const handleDelete = (id: number, productName: string) => {
-    if (!window.confirm(`${productName}을(를) 삭제할까요?
-삭제하면 되돌릴 수 없어요.`)) return;
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      return;
+    }
     deleteProduct.mutate(id, {
       onSuccess: () => toast(`${productName}을(를) 삭제했어요`),
+      onSettled: () => setConfirmDeleteId(null),
     });
   };
 
@@ -164,9 +169,10 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
                     variant="danger"
                     size="sm"
                     onClick={() => handleDelete(p.id, p.name)}
+                    onBlur={() => setConfirmDeleteId((current) => (current === p.id ? null : current))}
                     disabled={deleteProduct.isPending}
                   >
-                    삭제
+                    {confirmDeleteId === p.id ? '정말 삭제' : '삭제'}
                   </Button>
                 </div>
               )}

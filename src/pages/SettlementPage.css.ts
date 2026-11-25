@@ -88,38 +88,3 @@ export const itemRemove = style({
 
 export const itemLine = style({ display: 'block' });
 
-/** 입력 폼에서 두 칸 차지 (모바일은 한 줄 전체) */
-export const wide2 = style({ gridColumn: 'span 2' });
-
-/** 페이지 오른쪽 위 오늘 날짜 */
-export const todayLabel = style({
-  fontSize: 15,
-  fontWeight: 700,
-  color: vars.color.grey700,
-  whiteSpace: 'nowrap',
-});
-
-/** 표 안 고유번호 (앞 8자리) */
-export const code = style({
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  fontSize: 12,
-  color: vars.color.grey600,
-  whiteSpace: 'nowrap',
-});
-
-/** 입력칸 안 아이콘 버튼 (우편번호 돋보기) */
-export const iconButton = style({
-  display: 'grid',
-  placeItems: 'center',
-  width: 36,
-  height: 36,
-  border: 0,
-  borderRadius: vars.radius.sm,
-  background: 'transparent',
-  color: vars.color.grey600,
-  cursor: 'pointer',
-  selectors: {
-    '&:hover': { background: vars.color.grey100, color: vars.color.grey900 },
-    '&:focus-visible': { outline: `2px solid ${vars.color.blue500}`, outlineOffset: 1 },
-  },
-});

@@ -9,6 +9,8 @@ export interface Profile {
   id: string;
   name: string;
   role: Role;
+  /** 발주 신청 확인 체크 권한 (0028) */
+  canConfirmOrders: boolean;
 }
 
 export interface Warehouse {
