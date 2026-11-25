@@ -145,7 +145,7 @@ export function DispatchPage() {
                       <td className={cx(p.td, s.nowrap)}>{d.requestedOn ? formatDateLabel(d.requestedOn) : '-'}</td>
                       <td className={cx(p.td, s.nowrap)}>{d.shippedOn ? formatDateLabel(d.shippedOn) : '-'}</td>
                       <td className={cx(p.td, p.strong)}>{d.partner}</td>
-                      <td className={cx(p.td, p.wrapCell)}>
+                      <td className={cx(p.td, p.wrapCell, s.productCell)}>
                         <DispatchProducts items={d.items} />
                         {d.memo && <span className={s.sub}>{d.memo}</span>}
                       </td>

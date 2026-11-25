@@ -88,3 +88,6 @@ export const itemRemove = style({
 
 export const itemLine = style({ display: 'block' });
 
+
+/** 배차비 표 제품 칸 (기본 줄바꿈 칸 120px 의 1.5배) */
+export const productCell = style({ minWidth: 180 });
