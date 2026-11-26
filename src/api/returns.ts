@@ -24,6 +24,9 @@ function toError(error: { message: string; code?: string }): Error {
   if (error.code === '42703' && /channel/.test(error.message)) {
     return new Error('접수처 칸이 없어요. supabase/migrations/0018_return_channel.sql 을 먼저 실행해주세요');
   }
+  if (error.code === '42703' && /mis_shipped/.test(error.message)) {
+    return new Error('오출고 칸이 없어요. supabase/migrations/0029_return_mis_shipped.sql 을 먼저 실행해주세요');
+  }
   if (error.code === '42703' && /rerequest_count|restocked/.test(error.message)) {
     return new Error('재접수·양품화 칸이 없어요. supabase/migrations/0005_returns_rerequest.sql 을 먼저 실행해주세요');
   }
@@ -38,7 +41,7 @@ const COLUMNS = `
   tracking_checked_at, tracking_error, memo, rerequest_count, restocked, restocked_at, channel, created_at
 `;
 /** 마이그레이션을 실행해야 생기는 칸 (없으면 빼고 다시 읽는다) */
-const OPTIONAL_COLUMNS = ['original_invoice_no', 'invoice_history'];
+const OPTIONAL_COLUMNS = ['original_invoice_no', 'invoice_history', 'mis_shipped_at', 'mis_shipped'];
 
 /** DB 에 저장된 이전 반송장 한 개 */
 interface InvoiceHistoryRow {
@@ -140,6 +143,8 @@ interface ReturnRow {
   channel: string | null;
   original_invoice_no?: string | null;
   invoice_history?: unknown;
+  mis_shipped?: boolean | null;
+  mis_shipped_at?: string | null;
   created_at: string;
 }
 
@@ -178,6 +183,8 @@ function mapRow(row: ReturnRow): ReturnItem {
     rerequestCount: row.rerequest_count ?? 0,
     restocked: Boolean(row.restocked),
     restockedAt: row.restocked_at,
+    misShipped: Boolean(row.mis_shipped),
+    misShippedAt: row.mis_shipped_at ?? null,
     channel: row.channel,
     originalInvoiceNo: row.original_invoice_no ?? null,
     previousInvoices: fromHistory(row.invoice_history),
@@ -262,6 +269,10 @@ async function toColumns(current: Pick<ReturnItem, 'status' | 'invoiceNo'>, patc
   if (patch.restocked !== undefined) {
     columns.restocked = patch.restocked;
     columns.restocked_at = patch.restocked ? new Date().toISOString() : null;
+  }
+  if (patch.misShipped !== undefined) {
+    columns.mis_shipped = patch.misShipped;
+    columns.mis_shipped_at = patch.misShipped ? new Date().toISOString() : null;
   }
 
   let nextStatus = patch.status;

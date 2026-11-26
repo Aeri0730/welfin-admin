@@ -257,6 +257,9 @@ export interface ReturnItem {
   /** 양품화 여부 */
   restocked: boolean;
   restockedAt: string | null;
+  /** 오출고 여부 (잘못 보낸 물건이라 회수한 건) */
+  misShipped: boolean;
+  misShippedAt: string | null;
   /** 직접 지정한 접수처 (null 이면 관리번호 유무로 판단) */
   channel: string | null;
   /** 원송장번호 (처음 보낸 출고 송장, 참고용) */
@@ -298,6 +301,7 @@ export interface ReturnPatch {
   memo?: string | null;
   rerequestCount?: number;
   restocked?: boolean;
+  misShipped?: boolean;
   /** null = 관리번호 유무로 자동 판단 */
   channel?: string | null;
   originalInvoiceNo?: string | null;

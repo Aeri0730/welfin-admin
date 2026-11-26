@@ -66,6 +66,19 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
   const [restocked, setRestocked] = useState(item.restocked);
   const restock = useUpdateReturns();
 
+  /** 오출고도 누르는 즉시 저장 (양품화와 같은 방식) */
+  const [misShipped, setMisShipped] = useState(item.misShipped);
+  const misShip = useUpdateReturns();
+
+  const toggleMisShipped = () => {
+    const next = !misShipped;
+    setMisShipped(next);
+    misShip.mutate([{ current: item, patch: { misShipped: next } }], {
+      onSuccess: () => toast(next ? '오출고로 표시했어요' : '오출고 표시를 지웠어요'),
+      onError: () => setMisShipped(!next),
+    });
+  };
+
   const toggleRestocked = () => {
     const next = !restocked;
     setRestocked(next);
@@ -160,15 +173,26 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
         </span>
       }
       headerAction={
-        <Button
-          size="sm"
-          variant={restocked ? 'primary' : 'weak'}
-          onClick={toggleRestocked}
-          loading={restock.isPending}
-          aria-pressed={restocked}
-        >
-          {restocked ? '✓ 양품화' : '양품화'}
-        </Button>
+        <span style={{ display: 'flex', gap: 6 }}>
+          <Button
+            size="sm"
+            variant={misShipped ? 'primary' : 'weak'}
+            onClick={toggleMisShipped}
+            loading={misShip.isPending}
+            aria-pressed={misShipped}
+          >
+            {misShipped ? '✓ 오출고' : '오출고'}
+          </Button>
+          <Button
+            size="sm"
+            variant={restocked ? 'primary' : 'weak'}
+            onClick={toggleRestocked}
+            loading={restock.isPending}
+            aria-pressed={restocked}
+          >
+            {restocked ? '✓ 양품화' : '양품화'}
+          </Button>
+        </span>
       }
       footer={
         <>
@@ -281,12 +305,15 @@ export function ReturnEditDialog({ item, onClose }: { item: ReturnItem; onClose:
         />
         <TextAreaField label="메모" containerClassName={s.full} value={memo} onChange={(e) => setMemo(e.target.value)} />
       </div>
+      {misShipped && item.misShippedAt && (
+        <p style={{ marginTop: 8, fontSize: 13 }}>오출고 표시 {item.misShippedAt.slice(0, 10)}</p>
+      )}
       {restocked && item.restockedAt && (
         <p style={{ marginTop: 8, fontSize: 13 }}>양품화 처리 {item.restockedAt.slice(0, 10)}</p>
       )}
-      {(updateReturns.error || deleteReturn.error || restock.error || channelSave.error) && (
+      {(updateReturns.error || deleteReturn.error || restock.error || misShip.error || channelSave.error) && (
         <div style={{ marginTop: 12 }}>
-          <ErrorBox error={updateReturns.error ?? deleteReturn.error ?? restock.error ?? channelSave.error} />
+          <ErrorBox error={updateReturns.error ?? deleteReturn.error ?? restock.error ?? misShip.error ?? channelSave.error} />
         </div>
       )}
     </Dialog>

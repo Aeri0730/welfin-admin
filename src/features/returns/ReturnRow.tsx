@@ -117,6 +117,7 @@ export function ReturnRow({
           {item.recipient}
           <Badge tone={CHANNEL_TONE[returnChannel(item)] ?? 'purple'}>{returnChannelLabel(item)}</Badge>
           <Badge tone={chip.tone}>{chip.label}</Badge>
+          {item.misShipped && <Badge tone="red">오출고</Badge>}
           {item.restocked && <Badge tone="green">양품화</Badge>}
           {item.rerequestCount > 0 && (
             <Badge tone={overdue ? 'red' : 'orange'}>{attemptLabel(attemptOf(item.rerequestCount))}</Badge>
