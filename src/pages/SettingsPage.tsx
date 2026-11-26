@@ -20,6 +20,7 @@ import { useToast } from '@/components/Toast';
 import { Badge, Card, EmptyState, ErrorBox, PageHeader } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
 import { formatNumber } from '@/lib/format';
+import { matchesKeyword } from '@/lib/search';
 import * as s from './pages.css';
 import * as styles from './SettingsPage.css';
 
@@ -65,6 +66,7 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
   };
 
   const [sku, setSku] = useState('');
+  const [productKeyword, setProductKeyword] = useState('');
   const [name, setName] = useState('');
   const [safetyStock, setSafetyStock] = useState('');
   const [unitCost, setUnitCost] = useState('');
@@ -136,11 +138,22 @@ function ProductSection({ isAdmin }: { isAdmin: boolean }) {
 
       {products.error && <ErrorBox error={products.error} />}
       {deleteProduct.error && <ErrorBox error={deleteProduct.error} />}
+      {(products.data?.length ?? 0) > 0 && (
+        <TextField
+          label="검색"
+          type="search"
+          placeholder="제품명 · SKU"
+          value={productKeyword}
+          onChange={(e) => setProductKeyword(e.target.value)}
+        />
+      )}
       {products.data?.length === 0 ? (
         <EmptyState title="등록된 제품이 없어요" description="제품을 등록해야 입출고할 수 있어요" />
       ) : (
         <ul>
-          {(products.data ?? []).map((p) => (
+          {(products.data ?? [])
+            .filter((p) => matchesKeyword(productKeyword, [p.name, p.sku, p.ezadminCode]))
+            .map((p) => (
             <li key={p.id} className={s.listItem}>
               <div className={s.listMain}>
                 <p className={s.listTitle}>
@@ -240,6 +253,7 @@ function CounterpartSection({
 
   const [name, setName] = useState('');
   const [memo, setMemo] = useState('');
+  const [keyword, setKeyword] = useState('');
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -272,11 +286,22 @@ function CounterpartSection({
       )}
 
       {partners.error && <ErrorBox error={partners.error} />}
+      {(partners.data?.length ?? 0) > 0 && (
+        <TextField
+          label="검색"
+          type="search"
+          placeholder={`${label}명 · 메모`}
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      )}
       {partners.data?.length === 0 ? (
         <EmptyState title={`등록된 ${label}가 없어요`} description={emptyDescription} />
       ) : (
         <ul>
-          {(partners.data ?? []).map((p) => (
+          {(partners.data ?? [])
+            .filter((p) => matchesKeyword(keyword, [p.name, p.memo]))
+            .map((p) => (
             <li key={p.id} className={s.listItem}>
               <div className={s.listMain}>
                 <p className={s.listTitle}>

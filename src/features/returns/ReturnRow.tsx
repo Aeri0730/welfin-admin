@@ -11,6 +11,7 @@ import {
   daysSince,
   isAtPickup,
   isDelivered,
+  isLongReturning,
   isOverdue,
   isReturning,
   isTrackableCarrier,
@@ -25,7 +26,8 @@ import * as s from '@/pages/ReturnsPage.css';
  * 미집화 / 집화출발 / 도착(배송완료) / 회수중 중 하나로 보여준다.
  * 회수중 탭 조건(isReturning)과 같은 기준이다.
  */
-function statusChip(item: ReturnItem): { label: string; tone: BadgeTone } {
+function statusChip(item: ReturnItem, todayString: string): { label: string; tone: BadgeTone } {
+  if (isLongReturning(item, todayString)) return { label: '장기 회수중', tone: 'red' };
   // 송장이 여러 개면 하나라도 이동 중일 때 회수중
   if (item.status === 'in_transit' && !isReturning(item)) {
     if (isUncollected(item)) return { label: '미집화', tone: 'orange' };
@@ -90,7 +92,7 @@ export function ReturnRow({
   const [open, setOpen] = useState(false);
   const days = daysSince(item.receivedOn, todayString);
   const overdue = isOverdue(item);
-  const chip = statusChip(item);
+  const chip = statusChip(item, todayString);
   const link = item.invoiceNo ? carrierTrackingUrl(item.carrier, item.invoiceNo) : null;
   const t = item.tracking;
   const previous = item.previousInvoices;

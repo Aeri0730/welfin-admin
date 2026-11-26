@@ -6,11 +6,14 @@ import { useStockMatrix } from "@/features/inventory/useStockMatrix";
 import { cx } from "@/lib/cx";
 import { downloadCsv } from "@/lib/csv";
 import { formatDateLabel, formatNumber } from "@/lib/format";
+import { matchesKeyword } from "@/lib/search";
+import { TextField } from "@/components/Field";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import * as p from "@/pages/pages.css";
 import * as s from "@/pages/StoragePage.css";
 import { StickyMemo } from "./StickyMemo";
+import { useSavedExemptToggle } from "./useSavedExemptToggle";
 import {
   computeStorageRows,
   findStorageWarehouse,
@@ -94,6 +97,7 @@ export function StorageProducts({
   const items = useStorageItems(date);
   const update = useUpdateProduct();
   const [showAll, setShowAll] = useState(false);
+  const [keyword, setKeyword] = useState("");
 
   const warehouse = findStorageWarehouse(warehouses);
   const palletPrice = reported?.palletPrice ?? 550;
@@ -137,6 +141,15 @@ export function StorageProducts({
     showAll,
   ]);
 
+  /** 표에 보이는 줄 (합계·저장은 검색과 상관없이 전체) */
+  const shown = rows.filter((row) =>
+    matchesKeyword(keyword, [
+      row.product.name,
+      row.product.sku,
+      row.product.ezadminCode,
+    ]),
+  );
+
   const totals = rows.reduce(
     (sum, row) => ({
       pallets: sum.pallets + row.pallets,
@@ -152,6 +165,21 @@ export function StorageProducts({
 
   const patch = (product: Product, change: ProductPatch) =>
     update.mutate({ id: product.id, patch: change });
+
+  const savedExempt = useSavedExemptToggle(date, {
+    pallet: palletPrice,
+    rack: rackPrice,
+  });
+  /** 저장된 날은 그날 내역도 함께 고치고, 아직 저장 전이면 제품 설정만 바꾼다 */
+  const setExempt = (row: StorageRow, exempt: boolean) => {
+    if (snapshot) {
+      savedExempt.toggle(rows, row, exempt).catch(() => {
+        // 오류는 아래 ErrorBox 로 보여줌
+      });
+      return;
+    }
+    patch(row.product, { storageExempt: exempt });
+  };
 
   const handleDownload = () =>
     downloadCsv(
@@ -252,7 +280,7 @@ export function StorageProducts({
       </div>
       <p className={s.help}>
         {snapshot
-          ? "저장 시점의 재고·적재수 그대로예요. 바꾸려면 보관비 탭에서 이 날짜를 다시 저장하세요. "
+          ? "저장 시점의 재고·적재수 그대로예요. '제외'는 여기서 바로 켜고 끌 수 있고, 앞으로의 계산에도 똑같이 적용돼요 (업체 기준 수량은 그대로). "
           : "적재수·상품코드는 칸을 고친 뒤 다른 곳을 누르면 저장돼요. '제외'는 가입고처럼 보관비에서 빼는 제품이에요."}
         {noCapacity.length > 0 && (
           <span className={s.warn}>
@@ -262,8 +290,19 @@ export function StorageProducts({
         )}
       </p>
 
+      {rows.length > 0 && (
+        <TextField
+          label="검색"
+          type="search"
+          placeholder="상품명 · SKU · 상품코드"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      )}
+
       {error && <ErrorBox error={error} />}
       {update.error && <ErrorBox error={update.error} />}
+      {savedExempt.error && <ErrorBox error={savedExempt.error} />}
 
       {isLoading ? (
         <div className={p.stack} style={{ marginTop: 12 }}>
@@ -294,7 +333,7 @@ export function StorageProducts({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {shown.map((row) => (
                   <tr
                     key={row.product.id}
                     className={cx(row.exempt && s.exemptRow)}
@@ -356,12 +395,8 @@ export function StorageProducts({
                         type="checkbox"
                         aria-label={`${row.product.name} 보관비 제외`}
                         checked={row.exempt}
-                        disabled={snapshot}
-                        onChange={(e) =>
-                          patch(row.product, {
-                            storageExempt: e.target.checked,
-                          })
-                        }
+                        disabled={savedExempt.isPending}
+                        onChange={(e) => setExempt(row, e.target.checked)}
                       />
                     </td>
                   </tr>
@@ -386,7 +421,7 @@ export function StorageProducts({
           </div>
 
           <div className={p.responsiveOnly.mobile}>
-            {rows.map((row) => (
+            {shown.map((row) => (
               <div
                 key={row.product.id}
                 className={cx(s.productCard, row.exempt && s.exemptRow)}
@@ -408,11 +443,21 @@ export function StorageProducts({
                 <div className={s.productCardInputs}>
                   <span>재고 {formatNumber(row.stock)}</span>
                   {snapshot ? (
-                    <span>
-                      적재 팔레트 {row.palletCapacity ?? "-"} · 랙{" "}
-                      {row.rackCapacity ?? "-"}
-                      {row.exempt && " · 제외"}
-                    </span>
+                    <>
+                      <span>
+                        적재 팔레트 {row.palletCapacity ?? "-"} · 랙{" "}
+                        {row.rackCapacity ?? "-"}
+                      </span>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={row.exempt}
+                          disabled={savedExempt.isPending}
+                          onChange={(e) => setExempt(row, e.target.checked)}
+                        />{" "}
+                        제외
+                      </label>
+                    </>
                   ) : (
                     <>
                       <span>팔레트</span>
@@ -434,12 +479,8 @@ export function StorageProducts({
                       <label>
                         <input
                           type="checkbox"
-                          checked={row.product.storageExempt}
-                          onChange={(e) =>
-                            patch(row.product, {
-                              storageExempt: e.target.checked,
-                            })
-                          }
+                          checked={row.exempt}
+                          onChange={(e) => setExempt(row, e.target.checked)}
                         />{" "}
                         제외
                       </label>

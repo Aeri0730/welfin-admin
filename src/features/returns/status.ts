@@ -95,6 +95,29 @@ export function isReturning(item: ReturnItem): boolean {
   return item.status === "in_transit" && trackingsOf(item).some(moving);
 }
 
+/** 집화된 날부터 이 날수가 지나면 장기 회수중 (집화일 = 1일차, 4일차부터 장기) */
+export const LONG_RETURNING_DAYS = 3;
+
+/** 배송조회 이동 경로에서 처음 집화된 날 (YYYY-MM-DD). 경로가 없으면 null */
+export function pickedUpOn(item: ReturnItem): string | null {
+  const times = trackingsOf(item)
+    .flatMap((t) => t.events ?? [])
+    .filter((event) => PICKED_UP_CODES.has(event.code) || /집화/.test(event.label))
+    .flatMap((event) => (event.time ? [event.time.slice(0, 10)] : []))
+    .sort();
+  return times[0] ?? null;
+}
+
+/**
+ * 장기 회수중: 회수중인데 집화된 날부터 4일차가 된 건.
+ * 집화 날짜를 모르면 접수일부터 센다.
+ */
+export function isLongReturning(item: ReturnItem, todayString: string): boolean {
+  if (!isReturning(item)) return false;
+  const since = pickedUpOn(item) ?? item.receivedOn;
+  return daysSince(since, todayString) >= LONG_RETURNING_DAYS;
+}
+
 /**
  * 장기 미수: 3차 접수까지 했는데 아직 집화가 안 된 건.
  * 배송조회에서 집화처리가 확인되면 장기 미수가 아니다.
@@ -110,6 +133,7 @@ export function isOverdue(item: ReturnItem): boolean {
 export type ReturnFilter =
   | "overdue"
   | "uncollected"
+  | "long_returning"
   | ReturnStatus
   | "today"
   | "all";
@@ -120,6 +144,7 @@ export const FILTERS: Array<{ key: ReturnFilter; label: string }> = [
   { key: "requested", label: "송장 미등록" },
   { key: "uncollected", label: "미집화" },
   { key: "in_transit", label: "회수중" },
+  { key: "long_returning", label: "장기 회수중" },
   { key: "collected", label: "회수완료" },
   { key: "inspected", label: "검수완료" },
   { key: "all", label: "전체" },
@@ -136,7 +161,9 @@ export function matchesFilter(
     case "uncollected":
       return isUncollected(item);
     case "in_transit":
-      return isReturning(item);
+      return isReturning(item) && !isLongReturning(item, todayString);
+    case "long_returning":
+      return isLongReturning(item, todayString);
     case "today":
       return item.receivedOn === todayString;
     case "all":

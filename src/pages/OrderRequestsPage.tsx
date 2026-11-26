@@ -7,11 +7,14 @@ import { useToast } from '@/components/Toast';
 import { Card, EmptyState, ErrorBox, PageHeader, Skeleton } from '@/components/ui';
 import { useProfile } from '@/features/auth/session';
 import { ConfirmChip } from '@/features/orders/ConfirmChip';
+import { OrderExcelDialog } from '@/features/orders/OrderExcelDialog';
 import { OrderRequestDialog } from '@/features/orders/OrderRequestDialog';
 import * as s from '@/features/orders/orders.css';
 import { downloadCsv } from '@/lib/csv';
 import { cx } from '@/lib/cx';
 import { formatDateLabel, formatNumber, today } from '@/lib/format';
+import { matchesKeyword } from '@/lib/search';
+import { TextField } from '@/components/Field';
 import * as p from './pages.css';
 
 /** 엑셀 칸 (발주처에 보내는 형식 그대로. 신청자는 넣지 않는다) */
@@ -40,6 +43,8 @@ export function OrderRequestsPage() {
   const date = today();
   const query = useOrderRequests(date);
   const [editing, setEditing] = useState<OrderRequest | 'new' | null>(null);
+  const [keyword, setKeyword] = useState('');
+  const [importing, setImporting] = useState(false);
   const profile = useProfile().data;
   const canConfirm = profile?.canConfirmOrders === true;
   /** 확인 권한이 없을 때 칩을 누르면 보여줄 이유 */
@@ -49,6 +54,22 @@ export function OrderRequestsPage() {
       : `발주 확인은 김다영·박애리만 할 수 있어요 (지금 로그인: ${profile?.name ?? '-'})`;
 
   const rows = query.data ?? [];
+  /** 표에 보이는 건 (합계·전체 확인·엑셀은 검색과 상관없이 오늘 전체) */
+  const visible = rows.filter((o) =>
+    matchesKeyword(keyword, [
+      o.id,
+      o.recipient,
+      o.address,
+      o.zipCode,
+      o.phone,
+      o.mobile,
+      o.productName,
+      o.productOption,
+      o.requestNote,
+      o.requester,
+      o.invoiceNo,
+    ]),
+  );
   const totalQty = rows.reduce((sum, o) => sum + o.quantity, 0);
   const confirmedCount = rows.filter((o) => o.confirmedAt !== null).length;
   const pendingIds = rows.filter((o) => o.confirmedAt === null).map((o) => o.id);
@@ -78,6 +99,10 @@ export function OrderRequestsPage() {
               <Icon name="download" size={16} />
               엑셀
             </Button>
+            <Button variant="weak" size="sm" onClick={() => setImporting(true)}>
+              <Icon name="upload" size={16} />
+              엑셀로 신청
+            </Button>
             <Button size="sm" onClick={() => setEditing('new')}>
               <Icon name="plus" size={16} />
               발주 요청하기
@@ -104,10 +129,22 @@ export function OrderRequestsPage() {
           )}
         </div>
 
+        {rows.length > 0 && (
+          <TextField
+            label="검색"
+            type="search"
+            placeholder="수령자 · 주소 · 연락처 · 제품 · 송장번호 · 신청자"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+        )}
+
         {query.isLoading ? (
           <Skeleton height={200} />
         ) : rows.length === 0 ? (
           <EmptyState title="오늘 신청한 발주가 없어요" description="오른쪽 위 '발주 요청하기'로 신청해주세요" />
+        ) : visible.length === 0 ? (
+          <EmptyState title="검색 결과가 없어요" />
         ) : (
           <>
             <div className={cx(p.tableWrap, p.responsiveOnly.desktop)}>
@@ -131,7 +168,7 @@ export function OrderRequestsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((o) => (
+                  {visible.map((o) => (
                     <tr key={o.id} className={s.clickRow} onClick={() => setEditing(o)}>
                       <td className={p.td}>
                         <ConfirmChip order={o} canConfirm={canConfirm} noConfirmReason={noConfirmReason} />
@@ -158,7 +195,7 @@ export function OrderRequestsPage() {
             </div>
 
             <ul className={p.responsiveOnly.mobile}>
-              {rows.map((o) => (
+              {visible.map((o) => (
                 <li key={o.id} className={cx(p.listItem, s.clickRow)} onClick={() => setEditing(o)}>
                   <div className={p.listMain}>
                     <p className={p.listTitle}>
@@ -188,6 +225,7 @@ export function OrderRequestsPage() {
         )}
       </Card>
 
+      {importing && <OrderExcelDialog date={date} onClose={() => setImporting(false)} />}
       {editing && <OrderRequestDialog item={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </div>
   );

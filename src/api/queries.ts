@@ -416,6 +416,14 @@ export function useSaveOrderRequest() {
   });
 }
 
+export function useCreateOrderRequests() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: orderRequests.createOrderRequests,
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['orderRequests'] }),
+  });
+}
+
 export function useDeleteOrderRequest() {
   const queryClient = useQueryClient();
   return useMutation({

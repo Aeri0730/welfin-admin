@@ -11,6 +11,7 @@ import { MovementEditDialog } from '@/features/inventory/MovementEditDialog';
 import { describeRoute, formatSchedule, movementBadge } from '@/features/inventory/movement';
 import { downloadCsv } from '@/lib/csv';
 import { addDays, formatDateLabel, formatNumber, today } from '@/lib/format';
+import { matchesKeyword } from '@/lib/search';
 import { MovementSubTabs } from './MovementPage';
 import * as styles from './MovementPage.css';
 import * as s from './pages.css';
@@ -35,6 +36,7 @@ export function MovementStatusPage({ type }: { type: 'inbound' | 'outbound' }) {
   const [to, setTo] = useState(today());
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [editing, setEditing] = useState<Movement | null>(null);
+  const [keyword, setKeyword] = useState('');
 
   const pending = usePendingMovements(type);
   const movements = useMovements({ from, to, type });
@@ -43,7 +45,15 @@ export function MovementStatusPage({ type }: { type: 'inbound' | 'outbound' }) {
   const pendingBatches = useMemo(() => groupByBatch(pending.data ?? []), [pending.data]);
 
   /** 반영된 기록만 날짜별로 (오늘 날짜의 아직 안 된 예정 건은 위 '예정' 에서 보여줌) */
-  const done = useMemo(() => (movements.data ?? []).filter((m) => !isPending(m)), [movements.data]);
+  const done = useMemo(
+    () =>
+      (movements.data ?? []).filter(
+        (m) =>
+          !isPending(m) &&
+          matchesKeyword(keyword, [m.product.name, m.product.sku, describeRoute(m), m.memo, m.createdBy]),
+      ),
+    [movements.data, keyword],
+  );
   const grouped = useMemo(() => {
     const map = new Map<string, Movement[]>();
     for (const m of done) {
@@ -176,6 +186,14 @@ export function MovementStatusPage({ type }: { type: 'inbound' | 'outbound' }) {
               min={from}
               max={today()}
               onChange={(e) => e.target.value && setTo(e.target.value)}
+            />
+            <TextField
+              label="검색"
+              type="search"
+              placeholder="제품 · SKU · 경로 · 메모 · 작성자"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              containerClassName={s.filterWide}
             />
           </div>
           {movements.error && <ErrorBox error={movements.error} />}

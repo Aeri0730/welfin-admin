@@ -128,8 +128,7 @@ export async function fetchOrderRequests(date: string): Promise<OrderRequest[]> 
 
 const clean = (value: string) => value.trim() || null;
 
-export async function saveOrderRequest(input: OrderRequestInput): Promise<void> {
-  const columns = {
+const toColumns = (input: OrderRequestInput) => ({
     requested_on: input.requestedOn,
     recipient: input.recipient.trim(),
     zip_code: clean(input.zipCode),
@@ -144,11 +143,22 @@ export async function saveOrderRequest(input: OrderRequestInput): Promise<void> 
     quantity: input.quantity,
     ...(input.invoiceNo !== undefined && { invoice_no: clean(input.invoiceNo) }),
     updated_at: new Date().toISOString(),
-  };
+});
+
+export async function saveOrderRequest(input: OrderRequestInput): Promise<void> {
+  const columns = toColumns(input);
   const { error } = input.id
     ? await supabase.from('order_requests').update(columns).eq('id', input.id)
     : await supabase.from('order_requests').insert(columns);
   if (error) throw toError(error);
+}
+
+/** 엑셀로 여러 건 한 번에 신청 (모두 들어가거나 하나도 안 들어감) */
+export async function createOrderRequests(inputs: OrderRequestInput[]): Promise<number> {
+  if (inputs.length === 0) return 0;
+  const { error } = await supabase.from('order_requests').insert(inputs.map(toColumns));
+  if (error) throw toError(error);
+  return inputs.length;
 }
 
 /** 발주 확인 체크 / 해제. 여러 건을 한 번에 (담당자만. 확인한 사람은 서버가 채운다) */

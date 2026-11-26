@@ -10,6 +10,7 @@ import { TransferEditDialog } from '@/features/inventory/TransferEditDialog';
 import { downloadCsv } from '@/lib/csv';
 import { cx } from '@/lib/cx';
 import { addDays, formatDateLabel, formatNumber, today } from '@/lib/format';
+import { matchesKeyword } from '@/lib/search';
 import { MovementSubTabs } from './MovementPage';
 import * as styles from './MovementPage.css';
 import * as p from './pages.css';
@@ -54,18 +55,33 @@ export function TransferStatusPage() {
   const [from, setFrom] = useState(addDays(today(), -29));
   const [to, setTo] = useState(today());
   const [editing, setEditing] = useState<TransferRow | null>(null);
+  const [keyword, setKeyword] = useState('');
 
   const pending = usePendingMovements('transfer');
   const movements = useMovements({ from, to, type: 'transfer' });
 
-  const rows = useMemo(() => {
+  const allRows = useMemo(() => {
     const byId = new Map<number, Movement>();
     for (const m of [...(pending.data ?? []), ...(movements.data ?? [])]) byId.set(m.id, m);
     return sortRows(toRows([...byId.values()]));
   }, [pending.data, movements.data]);
 
-  const details = useTransferDetails(rows.map((r) => r.batchId));
+  const details = useTransferDetails(allRows.map((r) => r.batchId));
   const detailOf = (row: TransferRow): TransferDetail | undefined => details.data?.[row.batchId];
+  const rows = allRows.filter((r) => {
+    const d = detailOf(r);
+    return matchesKeyword(keyword, [
+      r.productNames,
+      ...r.lines.map((m) => m.product.sku),
+      ...r.lines.map((m) => m.memo),
+      d?.center,
+      d?.poNo,
+      d?.outNo,
+      d?.vehicleNo,
+      d?.driver,
+      d?.address,
+    ]);
+  });
 
   const pendingCount = rows.filter((r) => r.pending).length;
   const totalCost = rows.reduce((sum, r) => sum + (detailOf(r)?.vehicleCost ?? 0), 0);
@@ -116,6 +132,14 @@ export function TransferStatusPage() {
         <div className={p.filterBar}>
           <TextField label="시작일" type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
           <TextField label="종료일" type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} />
+          <TextField
+            label="검색"
+            type="search"
+            placeholder="제품 · 센터 · 발주번호 · 차량 · 기사"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            containerClassName={p.filterWide}
+          />
         </div>
         <p className={p.listMeta} style={{ marginBottom: 8 }}>
           예정 건은 기간과 상관없이 맨 위에 모두 보여요

@@ -9,6 +9,7 @@ import { MOVEMENT_TONE, describeRoute, signedQuantity } from '@/features/invento
 import { cx } from '@/lib/cx';
 import { downloadCsv } from '@/lib/csv';
 import { addDays, formatDateLabel, formatNumber, today } from '@/lib/format';
+import { matchesKeyword } from '@/lib/search';
 import * as s from './pages.css';
 
 function quantityText(m: Movement) {
@@ -23,6 +24,7 @@ export function HistoryPage() {
   const [to, setTo] = useState(today());
   const [type, setType] = useState<MovementType | ''>('');
   const [warehouseId, setWarehouseId] = useState('');
+  const [keyword, setKeyword] = useState('');
 
   const filter: MovementFilter = {
     from,
@@ -33,23 +35,29 @@ export function HistoryPage() {
 
   const warehouses = useWarehouses();
   const movements = useMovements(filter);
-  const list = movements.data ?? [];
+  const list = useMemo(
+    () =>
+      (movements.data ?? []).filter((m) =>
+        matchesKeyword(keyword, [m.product.name, m.product.sku, describeRoute(m), m.memo, m.createdBy]),
+      ),
+    [movements.data, keyword],
+  );
 
   const totals = useMemo(() => {
     const result: Record<MovementType, number> = { inbound: 0, outbound: 0, transfer: 0, adjust: 0 };
-    for (const m of movements.data ?? []) result[m.type] += m.quantity;
+    for (const m of list) result[m.type] += m.quantity;
     return result;
-  }, [movements.data]);
+  }, [list]);
 
   const grouped = useMemo(() => {
     const groups = new Map<string, Movement[]>();
-    for (const m of movements.data ?? []) {
+    for (const m of list) {
       const group = groups.get(m.movedOn) ?? [];
       group.push(m);
       groups.set(m.movedOn, group);
     }
     return [...groups.entries()];
-  }, [movements.data]);
+  }, [list]);
 
   const handleDownload = () => {
     downloadCsv(
@@ -114,6 +122,14 @@ export function HistoryPage() {
               </option>
             ))}
           </SelectField>
+          <TextField
+            label="검색"
+            type="search"
+            placeholder="제품 · SKU · 경로 · 메모 · 작성자"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            containerClassName={s.filterWide}
+          />
         </div>
       </Card>
 
