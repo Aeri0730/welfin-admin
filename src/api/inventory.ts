@@ -39,6 +39,38 @@ export async function fetchWarehouses(): Promise<Warehouse[]> {
   return data;
 }
 
+/** 창고 추가. 코드는 따로 쓰는 곳이 없어 이름으로 자동으로 만든다 */
+export async function createWarehouse(name: string): Promise<void> {
+  const { data: last, error: orderError } = await supabase
+    .from('warehouses')
+    .select('sort_order')
+    .order('sort_order', { ascending: false })
+    .limit(1);
+  if (orderError) throw toError(orderError);
+  const { error } = await supabase.from('warehouses').insert({
+    code: `WH_${Date.now().toString(36).toUpperCase()}`,
+    name: name.trim(),
+    sort_order: (last?.[0]?.sort_order ?? 0) + 1,
+  });
+  if (error) throw toError(error);
+}
+
+/**
+ * 한 줄 삭제 (창고·매입처·판매처 공통).
+ * 입출고 기록이 걸려 있으면 DB 가 막는다 (23503). RLS 로 막히면 에러 없이 0건.
+ */
+async function deleteRow(table: 'warehouses' | 'partners' | 'sales_channels', id: number, usedMessage: string): Promise<void> {
+  const { data, error } = await supabase.from(table).delete().eq('id', id).select('id');
+  if (error) {
+    if (error.code === '23503') throw new Error(usedMessage);
+    throw toError(error);
+  }
+  if (!data?.length) throw new Error('권한이 없어요. 관리자에게 문의해주세요');
+}
+
+export const deleteWarehouse = (id: number) =>
+  deleteRow('warehouses', id, '입출고 기록이나 재고가 있는 창고는 삭제할 수 없어요');
+
 interface ProductRow {
   id: number;
   sku: string;
@@ -150,6 +182,9 @@ export async function setPartnerActive(id: number, isActive: boolean): Promise<v
   if (error) throw toError(error);
 }
 
+export const deletePartner = (id: number) =>
+  deleteRow('partners', id, '입출고 기록이 있는 매입처는 삭제할 수 없어요. 대신 "사용 중지"를 눌러주세요');
+
 const isMissing = (error: { code?: string }) => ['42P01', 'PGRST205', '42703', 'PGRST200'].includes(error.code ?? '');
 
 function salesChannelError(error: { message: string; code?: string }): Error {
@@ -176,6 +211,9 @@ export async function setSalesChannelActive(id: number, isActive: boolean): Prom
   const { error } = await supabase.from('sales_channels').update({ is_active: isActive }).eq('id', id);
   if (error) throw salesChannelError(error);
 }
+
+export const deleteSalesChannel = (id: number) =>
+  deleteRow('sales_channels', id, '출고 기록이 있는 판매처는 삭제할 수 없어요. 대신 "사용 중지"를 눌러주세요');
 
 /** 기준일까지의 창고별·제품별 재고. date 가 없으면 전체 기록 기준(현재 재고). */
 export async function fetchStock(date?: string): Promise<StockLevel[]> {

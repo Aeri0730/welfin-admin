@@ -3,7 +3,9 @@ import {
   useCreatePartner,
   useCreateProduct,
   useCreateSalesChannel,
+  useDeletePartner,
   useDeleteProduct,
+  useDeleteSalesChannel,
   usePartners,
   useProducts,
   useSalesChannels,
@@ -13,6 +15,7 @@ import {
 } from '@/api/queries';
 import { PRODUCT_CATEGORY_LABEL, type Product, type ProductCategory } from '@/api/types';
 import { ProductEditDialog } from '@/features/inventory/ProductEditDialog';
+import { WarehouseSection } from '@/features/inventory/WarehouseSection';
 import { DEFAULT_SAFETY_STOCK } from '@/features/inventory/useStockMatrix';
 import { Button } from '@/components/Button';
 import { SelectField, TextField } from '@/components/Field';
@@ -32,11 +35,12 @@ export function SettingsPage() {
     <div className={s.stack}>
       <PageHeader
         title="기준 정보"
-        description={isAdmin ? '제품과 매입처·판매처를 관리해요' : '기준 정보는 관리자만 수정할 수 있어요'}
+        description={isAdmin ? '제품과 창고·매입처·판매처를 관리해요' : '기준 정보는 관리자만 수정할 수 있어요'}
       />
       <div className={s.twoColumn}>
         <ProductSection isAdmin={isAdmin} />
         <div className={s.stack}>
+          <WarehouseSection isAdmin={isAdmin} />
           <PartnerSection isAdmin={isAdmin} />
           <SalesChannelSection isAdmin={isAdmin} />
         </div>
@@ -207,6 +211,7 @@ function PartnerSection({ isAdmin }: { isAdmin: boolean }) {
       list={usePartners()}
       create={useCreatePartner()}
       setActive={useSetPartnerActive()}
+      remove={useDeletePartner()}
     />
   );
 }
@@ -221,6 +226,7 @@ function SalesChannelSection({ isAdmin }: { isAdmin: boolean }) {
       list={useSalesChannels()}
       create={useCreateSalesChannel()}
       setActive={useSetSalesChannelActive()}
+      remove={useDeleteSalesChannel()}
     />
   );
 }
@@ -234,6 +240,7 @@ function CounterpartSection({
   list,
   create,
   setActive,
+  remove,
 }: {
   isAdmin: boolean;
   label: string;
@@ -246,6 +253,11 @@ function CounterpartSection({
     isPending: boolean;
   };
   setActive: { mutate: (input: { id: number; isActive: boolean }) => void; isPending: boolean };
+  remove: {
+    mutate: (id: number, options: { onSuccess: () => void; onSettled: () => void }) => void;
+    error: Error | null;
+    isPending: boolean;
+  };
 }) {
   const toast = useToast();
   const partners = list;
@@ -254,6 +266,19 @@ function CounterpartSection({
   const [name, setName] = useState('');
   const [memo, setMemo] = useState('');
   const [keyword, setKeyword] = useState('');
+
+  /** 삭제는 두 번 눌러서 (제품과 같은 방식) */
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const handleDelete = (id: number, itemName: string) => {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id);
+      return;
+    }
+    remove.mutate(id, {
+      onSuccess: () => toast(`${itemName}을(를) 삭제했어요`),
+      onSettled: () => setConfirmDeleteId(null),
+    });
+  };
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -286,6 +311,7 @@ function CounterpartSection({
       )}
 
       {partners.error && <ErrorBox error={partners.error} />}
+      {remove.error && <ErrorBox error={remove.error} />}
       {(partners.data?.length ?? 0) > 0 && (
         <TextField
           label="검색"
@@ -311,14 +337,25 @@ function CounterpartSection({
                 {p.memo && <p className={s.listMeta}>{p.memo}</p>}
               </div>
               {isAdmin && (
-                <Button
-                  variant="weak"
-                  size="sm"
-                  onClick={() => setActive.mutate({ id: p.id, isActive: !p.isActive })}
-                  disabled={setActive.isPending}
-                >
-                  {p.isActive ? '사용 중지' : '다시 사용'}
-                </Button>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <Button
+                    variant="weak"
+                    size="sm"
+                    onClick={() => setActive.mutate({ id: p.id, isActive: !p.isActive })}
+                    disabled={setActive.isPending}
+                  >
+                    {p.isActive ? '사용 중지' : '다시 사용'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(p.id, p.name)}
+                    onBlur={() => setConfirmDeleteId((current) => (current === p.id ? null : current))}
+                    disabled={remove.isPending}
+                  >
+                    {confirmDeleteId === p.id ? '정말 삭제' : '삭제'}
+                  </Button>
+                </div>
               )}
             </li>
           ))}

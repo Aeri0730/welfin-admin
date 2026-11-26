@@ -36,6 +36,22 @@ export function useWarehouses() {
   });
 }
 
+export function useCreateWarehouse() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inventory.createWarehouse,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.warehouses }),
+  });
+}
+
+export function useDeleteWarehouse() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inventory.deleteWarehouse,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.warehouses }),
+  });
+}
+
 export function useProducts() {
   return useQuery({ queryKey: queryKeys.products, queryFn: inventory.fetchProducts });
 }
@@ -146,6 +162,14 @@ export function useSetPartnerActive() {
   });
 }
 
+export function useDeletePartner() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inventory.deletePartner,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.partners }),
+  });
+}
+
 /* ---------- 판매처 ---------- */
 
 export function useSalesChannels() {
@@ -164,6 +188,14 @@ export function useSetSalesChannelActive() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: boolean }) => inventory.setSalesChannelActive(id, isActive),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.salesChannels }),
+  });
+}
+
+export function useDeleteSalesChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: inventory.deleteSalesChannel,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.salesChannels }),
   });
 }
